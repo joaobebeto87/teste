@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  password    String
+  role        String   @default("ASSESSOR")
+  accessLevel Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  processesCreated Process[]      @relation("CreatedBy")
+  movements        Movement[]
+  taskMovements    TaskMovement[]
+  tasksReceived    Task[]         @relation("AssignedTo")
+  tasksSent        Task[]         @relation("AssignedBy")
+  hearings         Hearing[]      @relation("HearingCreatedBy")
+}
+
+model Counter {
+  year    Int @id
+  lastSeq Int @default(0)
+}
+
+model Process {
+  id          String    @id @default(cuid())
+  number      String    @unique
+  subject     String
+  parties     String?
+  description String?
+  status      String    @default("ATIVO")
+  type        String    @default("ADMINISTRATIVO")
+  category    String?
+  client      String?   // ESCRITORIO | PREFEITURA — só para processos JUDICIAL
+  deadline    DateTime?
+  year        Int
+  sequence    Int
+  syncCreatedAt      DateTime?
+  lastSyncMovementAt DateTime?
+  publicacaoOabs     String?   // titulares vistos nas publicações DJEN (ex.: "WALDEMAR,JOAO")
+  createdById String
+  createdBy   User      @relation("CreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  movements Movement[]
+  tasks     Task[]
+  hearings  Hearing[]
+
+  @@index([status])
+  @@index([type])
+  @@index([client])
+}
+
+model Movement {
+  id          String   @id @default(cuid())
+  processId   String
+  process     Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  description String
+  notifyEmail String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+
+  attachments Attachment[]
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  movementId String
+  movement   Movement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  filename   String
+  storedName String
+  mimeType   String
+  size       Int
+  createdAt  DateTime @default(now())
+}
+
+model Task {
+  id           String    @id @default(cuid())
+  title        String
+  description  String?
+  assignedToId String?
+  assignedTo   User?     @relation("AssignedTo", fields: [assignedToId], references: [id])
+  assignedById String
+  assignedBy   User      @relation("AssignedBy", fields: [assignedById], references: [id])
+  processId    String?
+  process      Process?  @relation(fields: [processId], references: [id])
+  deadline     DateTime
+  status       String    @default("PENDENTE")
+  read         Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  movements TaskMovement[]
+}
+
+model TaskMovement {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  description String
+  notifyEmail String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+
+  attachments TaskAttachment[]
+}
+
+model TaskAttachment {
+  id         String       @id @default(cuid())
+  movementId String
+  movement   TaskMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  filename   String
+  storedName String
+  mimeType   String
+  size       Int
+  createdAt  DateTime     @default(now())
+}
+
+model Hearing {
+  id            String   @id @default(cuid())
+  processId     String
+  process       Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  type          String
+  title         String
+  description   String?
+  location      String?
+  dateTime      DateTime
+  googleEventId String?
+  createdById   String
+  createdBy     User     @relation("HearingCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+}
+
+model AppConfig {
+  key   String @id
+  value String
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  userName   String
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  metadata   String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
