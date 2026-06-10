@@ -27,11 +27,12 @@ if ([string]::IsNullOrEmpty($CronSecret)) {
 }
 
 # Verificar se o Node.js está disponível
-$NodePath = (Get-Command node -ErrorAction SilentlyContinue)?.Source
-if (-not $NodePath) {
+$NodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if (-not $NodeCmd) {
     Write-Error "Node.js nao encontrado. Instale de https://nodejs.org/"
     exit 1
 }
+$NodePath = $NodeCmd.Source
 Write-Host "Node.js encontrado: $NodePath"
 
 # Montar comando
