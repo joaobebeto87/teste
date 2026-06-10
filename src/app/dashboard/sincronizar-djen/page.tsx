@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { MONITORED_OABS } from "@/lib/djen";
+import SyncDjenClient from "./SyncDjenClient";
 
 function formatBR(iso: string): string {
   const d = new Date(iso);
@@ -42,7 +43,10 @@ export default async function SincronizarDjenPage() {
         (capa e andamentos complementados pelo <strong className="text-stone-700">Datajud</strong>).
       </p>
 
-      <div className="mt-6 card">
+      {/* Botão de sync manual */}
+      <SyncDjenClient />
+
+      <div className="mt-4 card">
         <h2 className="section-title mb-3">OABs monitoradas</h2>
         <ul className="text-sm text-stone-600 space-y-1">
           {MONITORED_OABS.map((o) => (
@@ -87,26 +91,23 @@ export default async function SincronizarDjenPage() {
           </>
         ) : (
           <p className="text-sm text-stone-500">
-            Nenhuma sincronização registrada ainda. Rode o script local para a primeira carga.
+            Nenhuma sincronização registrada ainda.
           </p>
         )}
       </div>
 
-      <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-5 text-sm text-stone-600">
-        <h2 className="font-semibold text-stone-700 mb-2">Como a sincronização roda</h2>
-        <p className="mb-3">
-          A API do CNJ bloqueia consultas de fora do Brasil, e o servidor de produção tem IP nos EUA.
-          Por isso a busca roda <strong>no seu computador</strong> (IP brasileiro): um script consulta
-          o DJEN e envia as publicações para o sistema gravar.
+      {/* Automação */}
+      <div className="mt-4 card p-5">
+        <h2 className="font-semibold text-stone-700 mb-3">Automação (tarefa diária)</h2>
+        <p className="text-sm text-stone-500 mb-3">
+          A API do CNJ só aceita conexões do Brasil. Por isso a busca roda no seu computador.
+          Para automatizar, execute o comando abaixo <strong>uma única vez como Administrador</strong>:
         </p>
-        <p className="mb-1 font-medium text-stone-700">Rodar manualmente (no seu PC):</p>
-        <div className="rounded bg-navy-800 text-gold-400 font-mono text-xs p-3 mb-3">
-          <p>node scripts/sync-djen-local.mjs</p>
+        <div className="rounded bg-navy-800 text-gold-400 font-mono text-xs p-3 mb-3 select-all">
+          powershell -ExecutionPolicy Bypass -File &quot;C:\projetos\monitor-juridico\scripts\instalar-tarefa-djen.ps1&quot;
         </div>
-        <p className="text-xs text-stone-500">
-          Requer as variáveis <code className="font-mono">GP_BASE_URL</code> e{" "}
-          <code className="font-mono">GP_CRON_SECRET</code>. Recomendado agendar
-          como Tarefa do Windows para rodar automaticamente.
+        <p className="text-xs text-stone-400">
+          Isso agenda a sincronização para rodar automaticamente todo dia às 09:00 (mesmo que o PC tenha estado desligado antes).
         </p>
       </div>
     </div>

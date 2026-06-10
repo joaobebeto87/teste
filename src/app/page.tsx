@@ -37,20 +37,14 @@ export default function LoginPage() {
           }}
         />
         <div className="relative">
-          {/* Logo CPA — três triângulos dourados */}
-          <svg width="108" height="95" viewBox="0 0 120 105" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto mb-6">
-            {/* Triângulo grande — topo */}
-            <polygon points="60,2 5,68 115,68" fill="none" stroke="#c4a44a" strokeWidth="2.2"/>
-            {/* Triângulo esquerdo — C */}
-            <polygon points="26,71 2,103 50,103" fill="none" stroke="#c4a44a" strokeWidth="2.2"/>
-            {/* Triângulo direito — A */}
-            <polygon points="94,71 70,103 118,103" fill="none" stroke="#c4a44a" strokeWidth="2.2"/>
-          </svg>
+          {/* Logo CPA — tipografia */}
+          <div className="flex items-baseline justify-center gap-0 leading-none mb-2">
+            <span className="text-white font-display text-6xl font-bold tracking-tight">C</span>
+            <span className="text-gold-400 font-display text-6xl font-bold">&amp;</span>
+            <span className="text-white font-display text-6xl font-bold tracking-tight">P.A</span>
+          </div>
           <div className="mx-auto my-4 h-px w-16 bg-gold-500/60" />
-          <h1 className="font-display text-xl font-semibold tracking-[0.12em] uppercase text-white">
-            Cavalcanti &amp; Pinto de Azevedo
-          </h1>
-          <p className="mt-1 text-[0.65rem] font-medium uppercase tracking-[0.4em] text-gold-400">
+          <p className="text-[0.65rem] font-medium uppercase tracking-[0.4em] text-gold-400">
             · Advogados ·
           </p>
           <p className="eyebrow mt-6 text-gold-300">Gestão de Processos</p>

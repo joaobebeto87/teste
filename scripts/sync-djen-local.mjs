@@ -108,40 +108,21 @@ async function fetchAllForOab(oab, desde) {
   return all;
 }
 
-async function getUltimaSincronizacao() {
-  try {
-    const res = await fetch(`${BASE_URL}/api/cron/sincronizar-djen`, {
-      headers: { "x-cron-secret": CRON_SECRET },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.lastSyncAt ?? null;
-  } catch { return null; }
-}
-
 async function main() {
   console.log(`\n=== CPA Advogados — Sync DJEN ===`);
   console.log(`Sistema: ${BASE_URL}`);
   console.log(`Hora: ${new Date().toLocaleString("pt-BR")}\n`);
 
-  // Determinar data de início da busca
+  // Janela fixa de 60 dias — NÃO usa a data da última sync.
+  // A API do DJEN é instável com filtros de datas recentes (retorna 0 com ontem).
+  // Com 60 dias a resposta é confiável. O processedIds no servidor deduplica.
   let desde = DESDE_OVERRIDE;
   if (!desde) {
-    const lastSync = await getUltimaSincronizacao();
-    if (lastSync) {
-      // Usa a data da última sync (sem hora, para pegar o dia completo)
-      desde = lastSync.substring(0, 10);
-      console.log(`  Ultima sincronizacao: ${new Date(lastSync).toLocaleString("pt-BR")}`);
-    } else {
-      // Primeira vez: busca últimos 7 dias
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      desde = d.toISOString().substring(0, 10);
-      console.log(`  Primeira sincronizacao — buscando ultimos 7 dias`);
-    }
+    const d = new Date();
+    d.setDate(d.getDate() - 60);
+    desde = d.toISOString().substring(0, 10);
   }
-  console.log(`  Buscando publicacoes desde: ${desde}\n`);
+  console.log(`  Janela de busca: ${desde} até hoje\n`);
 
   const perOab = [];
   const byHash = new Map();
@@ -151,7 +132,7 @@ async function main() {
       process.stdout.write(`  Buscando ${oab.numero}/${oab.uf} — ${oab.label}... `);
       const items = await fetchAllForOab(oab, desde);
       perOab.push({ oab: `${oab.numero}/${oab.uf}`, label: oab.label, total: items.length });
-      console.log(`  ${oab.numero}/PE — ${oab.label}: ${items.length} publicações`);
+      console.log(`${items.length} publicações`);
       for (const it of items) {
         const k = it.hash || String(it.id);
         if (!byHash.has(k)) byHash.set(k, it);
@@ -163,20 +144,52 @@ async function main() {
   }
 
   const items = Array.from(byHash.values());
-  console.log(`\nTotal de publicacoes distintas: ${items.length}`);
+  console.log(`\nTotal de publicações distintas: ${items.length}`);
 
-  // Buscar capas DataJud localmente para evitar timeout no servidor
-  const capas = {};
-  const numeros = [...new Set(items.map(it => (it.numero_processo || it.numeroprocessocommascara || "").replace(/\D/g,"")).filter(d => d.length === 20))];
-  console.log(`Buscando capas DataJud para ${numeros.length} processo(s)...`);
-  for (const digits of numeros) {
-    const sigla = items.find(it => (it.numero_processo || it.numeroprocessocommascara || "").replace(/\D/g,"") === digits)?.siglaTribunal;
-    capas[digits] = await fetchCapa(digits, sigla);
-    process.stdout.write(".");
+  if (items.length === 0) {
+    console.log("Nenhuma publicação encontrada. Verifique a conectividade com a API do DJEN.\n");
+    process.exit(0);
   }
-  if (numeros.length) console.log();
 
-  console.log("Enviando ao servidor em lotes...\n");
+  // Buscar capas DataJud apenas para processos que ainda não existem no servidor.
+  // Estratégia: envia um lote de "dry-check" para saber quais CNJs são novos.
+  const todosCnjs = [...new Set(
+    items.map(it => (it.numero_processo || it.numeroprocessocommascara || "").replace(/\D/g, ""))
+         .filter(d => d.length === 20)
+  )];
+
+  console.log(`\nVerificando quais dos ${todosCnjs.length} processos são novos no servidor...`);
+  let cnjsNovos = new Set(todosCnjs);
+  try {
+    const checkRes = await fetch(`${BASE_URL}/api/processos/check-cnjs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
+      body: JSON.stringify({ cnjs: todosCnjs }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (checkRes.ok) {
+      const { existing } = await checkRes.json();
+      existing.forEach(c => cnjsNovos.delete(c));
+      console.log(`  ${cnjsNovos.size} processos novos, ${existing.length} já existem\n`);
+    }
+  } catch { console.log("  (não foi possível verificar — buscaremos capas para todos)\n"); }
+
+  // Buscar DataJud apenas para os processos novos
+  const capas = {};
+  const cnjsParaCapas = [...cnjsNovos];
+  if (cnjsParaCapas.length > 0) {
+    console.log(`Buscando capas DataJud para ${cnjsParaCapas.length} processo(s) novo(s)...`);
+    for (const digits of cnjsParaCapas) {
+      const sigla = items.find(it =>
+        (it.numero_processo || it.numeroprocessocommascara || "").replace(/\D/g, "") === digits
+      )?.siglaTribunal;
+      capas[digits] = await fetchCapa(digits, sigla);
+      process.stdout.write(".");
+    }
+    console.log();
+  }
+
+  console.log("\nEnviando ao servidor em lotes...\n");
 
   const BATCH_SIZE = 200;
   let totalCreated = 0, totalSynced = 0, lote = 0;
@@ -188,20 +201,20 @@ async function main() {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
       body: JSON.stringify({ items: batch, perOab, capas }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(90000),
     });
     const data = await res.json();
     if (!res.ok) { console.error("ERRO do servidor:", data.error || res.status); process.exit(1); }
 
     totalCreated += data.created || 0;
     totalSynced  += data.synced  || 0;
-    console.log(`  Lote ${lote}: +${data.created} processos  +${data.synced} movimentacoes  (${offset + batch.length}/${items.length})`);
+    console.log(`  Lote ${lote}: +${data.created} processos  +${data.synced} movimentações  (${offset + batch.length}/${items.length})`);
     if ((data.errors || []).length) {
       for (const e of data.errors.slice(0, 3)) console.log(`    aviso: ${e}`);
     }
   }
 
-  console.log(`\nConcluido: ${totalCreated} processos criados, ${totalSynced} movimentacoes.\n`);
+  console.log(`\nConcluído: ${totalCreated} processos criados, ${totalSynced} movimentações.\n`);
 }
 
 main().catch((err) => { console.error("Falha:", err?.message || err); process.exit(1); });
