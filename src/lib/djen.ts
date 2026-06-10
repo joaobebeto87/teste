@@ -352,7 +352,7 @@ export async function syncDjenCore(
   }
 
   if (!dryRun) {
-    const toStore = newProcessedIds.slice(-5000);
+    const toStore = newProcessedIds.slice(-15000);
     await prisma.appConfig.upsert({
       where: { key: PROCESSED_KEY },
       update: { value: JSON.stringify(toStore) },

@@ -78,21 +78,20 @@ const OABS = [
   { numero: "51184", uf: "PE", label: "João Roberto" },
 ];
 
-async function fetchAllForOab(oab, desde) {
+async function fetchAllForOab(oab) {
+  // NÃO usa filtro de data — a API do DJEN retorna 0 com qualquer filtro de data.
+  // Retorna as publicações ordenadas da mais recente para a mais antiga.
+  // O processedIds no servidor garante deduplicação.
   const itensPorPagina = 200;
+  const MAX_PAGINAS = 30; // até 6000 publicações por OAB
   const all = [];
   let pagina = 1;
-  for (let guard = 0; guard < 25; guard++) {
+  for (let guard = 0; guard < MAX_PAGINAS; guard++) {
     const url = new URL(DJEN_URL);
     url.searchParams.set("numeroOab", oab.numero);
     url.searchParams.set("ufOab", oab.uf);
     url.searchParams.set("itensPorPagina", String(itensPorPagina));
     url.searchParams.set("pagina", String(pagina));
-    if (desde) {
-      // API do DJEN espera DD/MM/YYYY
-      const [ano, mes, dia] = desde.split("-");
-      url.searchParams.set("dataDisponibilizacaoInicio", `${dia}/${mes}/${ano}`);
-    }
     const res = await fetch(url, {
       headers: { Accept: "application/json", "Accept-Language": "pt-BR,pt;q=0.9", "User-Agent": BROWSER_UA },
       signal: AbortSignal.timeout(30000),
@@ -113,16 +112,9 @@ async function main() {
   console.log(`Sistema: ${BASE_URL}`);
   console.log(`Hora: ${new Date().toLocaleString("pt-BR")}\n`);
 
-  // Janela fixa de 60 dias — NÃO usa a data da última sync.
-  // A API do DJEN é instável com filtros de datas recentes (retorna 0 com ontem).
-  // Com 60 dias a resposta é confiável. O processedIds no servidor deduplica.
-  let desde = DESDE_OVERRIDE;
-  if (!desde) {
-    const d = new Date();
-    d.setDate(d.getDate() - 60);
-    desde = d.toISOString().substring(0, 10);
-  }
-  console.log(`  Janela de busca: ${desde} até hoje\n`);
+  // NÃO usa filtro de data — a API do DJEN retorna 0 com qualquer filtro.
+  // Buscamos tudo e o servidor deduplica via processedIds.
+  console.log(`  Buscando todas as publicações disponíveis (sem filtro de data)\n`);
 
   const perOab = [];
   const byHash = new Map();
@@ -130,7 +122,7 @@ async function main() {
   for (const oab of OABS) {
     try {
       process.stdout.write(`  Buscando ${oab.numero}/${oab.uf} — ${oab.label}... `);
-      const items = await fetchAllForOab(oab, desde);
+      const items = await fetchAllForOab(oab);
       perOab.push({ oab: `${oab.numero}/${oab.uf}`, label: oab.label, total: items.length });
       console.log(`${items.length} publicações`);
       for (const it of items) {
