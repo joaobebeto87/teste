@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { createHearingEvent } from "@/lib/googleCalendar";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -46,6 +47,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     include: { createdBy: { select: { name: true } } },
   });
 
-  // Google Calendar: não implementado ainda
-  return NextResponse.json({ ...hearing, googleEventCreated: false }, { status: 201 });
+  // Google Calendar: criar evento
+  const googleEventId = await createHearingEvent({
+    processNumber: process.number,
+    title: hearing.title,
+    type: hearing.type,
+    dateTime: hearing.dateTime,
+    location: hearing.location,
+    description: hearing.description,
+  });
+
+  if (googleEventId) {
+    await prisma.hearing.update({ where: { id: hearing.id }, data: { googleEventId } });
+  }
+
+  return NextResponse.json({ ...hearing, googleEventCreated: !!googleEventId }, { status: 201 });
 }

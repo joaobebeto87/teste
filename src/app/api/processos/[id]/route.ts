@@ -4,6 +4,11 @@ import { authOptions, isSocioOrAbove, canExcluirProcesso } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { deleteUploadFiles } from "@/lib/uploads";
+import {
+  createDeadlineEvent,
+  updateDeadlineEvent,
+  deleteCalendarEvent,
+} from "@/lib/googleCalendar";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -69,6 +74,44 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   const updated = await prisma.process.update({ where: { id: params.id }, data });
 
+  // ── Google Calendar: sincronizar evento de prazo ───────────────────────────
+  if (isStaff && "deadline" in body) {
+    const newDeadline = updated.deadline;
+    const oldEventId = process.googleEventId;
+
+    if (newDeadline) {
+      if (oldEventId) {
+        // Atualizar evento existente
+        await updateDeadlineEvent(oldEventId, {
+          number: process.number,
+          subject: updated.subject,
+          deadline: newDeadline,
+        });
+      } else {
+        // Criar novo evento
+        const eventId = await createDeadlineEvent({
+          number: process.number,
+          subject: updated.subject,
+          deadline: newDeadline,
+        });
+        if (eventId) {
+          await prisma.process.update({
+            where: { id: params.id },
+            data: { googleEventId: eventId },
+          });
+        }
+      }
+    } else if (oldEventId) {
+      // Prazo removido → apagar evento
+      await deleteCalendarEvent(oldEventId);
+      await prisma.process.update({
+        where: { id: params.id },
+        data: { googleEventId: null },
+      });
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   await logAudit({
     actor: session.user,
     action: "EDITAR",
@@ -94,10 +137,16 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     },
   });
   if (!process) return NextResponse.json({ error: "Processo não encontrado" }, { status: 404 });
+  // process.googleEventId está disponível pois o campo está no modelo
 
   // Remove arquivos físicos antes de deletar do banco
   const storedNames = process.movements.flatMap((m) => m.attachments.map((a) => a.storedName));
   await deleteUploadFiles(storedNames);
+
+  // Remove evento de prazo no Google Calendar, se existir
+  if (process.googleEventId) {
+    await deleteCalendarEvent(process.googleEventId);
+  }
 
   await prisma.process.delete({ where: { id: params.id } });
 

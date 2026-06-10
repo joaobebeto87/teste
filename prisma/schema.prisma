@@ -42,6 +42,7 @@ model Process {
   deadline    DateTime?
   year        Int
   sequence    Int
+  googleEventId      String?   // ID do evento de prazo no Google Calendar
   syncCreatedAt      DateTime?
   lastSyncMovementAt DateTime?
   publicacaoOabs     String?   // titulares vistos nas publicações DJEN (ex.: "WALDEMAR,JOAO")

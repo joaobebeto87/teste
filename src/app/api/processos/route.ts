@@ -4,6 +4,7 @@ import { authOptions, canJudicial } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { generateProcessNumber } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
+import { createDeadlineEvent } from "@/lib/googleCalendar";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -58,6 +59,18 @@ export async function POST(req: NextRequest) {
         },
         include: { createdBy: { select: { name: true, email: true } } },
       });
+      // Google Calendar: criar evento de prazo se houver
+      if (process.deadline) {
+        const eventId = await createDeadlineEvent({
+          number: process.number,
+          subject: process.subject,
+          deadline: process.deadline,
+        });
+        if (eventId) {
+          await prisma.process.update({ where: { id: process.id }, data: { googleEventId: eventId } });
+        }
+      }
+
       await logAudit({
         actor: session.user,
         action: "CRIAR",
@@ -100,6 +113,18 @@ export async function POST(req: NextRequest) {
       include: { createdBy: { select: { name: true, email: true } } },
     });
   });
+
+  // Google Calendar: criar evento de prazo se houver
+  if (process.deadline) {
+    const eventId = await createDeadlineEvent({
+      number: process.number,
+      subject: process.subject,
+      deadline: process.deadline,
+    });
+    if (eventId) {
+      await prisma.process.update({ where: { id: process.id }, data: { googleEventId: eventId } });
+    }
+  }
 
   await logAudit({
     actor: session.user,

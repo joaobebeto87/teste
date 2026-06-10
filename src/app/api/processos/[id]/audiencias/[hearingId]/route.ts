@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions, isAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { deleteCalendarEvent } from "@/lib/googleCalendar";
 
 export async function DELETE(
   req: NextRequest,
@@ -20,6 +21,11 @@ export async function DELETE(
 
   const canDelete = isAdmin(session.user) || hearing.createdById === session.user.id;
   if (!canDelete) return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+
+  // Remove evento do Google Calendar se existir
+  if (hearing.googleEventId) {
+    await deleteCalendarEvent(hearing.googleEventId);
+  }
 
   await prisma.hearing.delete({ where: { id: params.hearingId } });
 
