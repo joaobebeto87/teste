@@ -3,7 +3,8 @@
 # Execute como Administrador.
 
 $NomeTarefa = "CPA-SyncDJEN"
-$NodeExe    = (Get-Command node -ErrorAction SilentlyContinue)?.Source
+$NodeCmd    = Get-Command node -ErrorAction SilentlyContinue
+$NodeExe    = if ($NodeCmd) { $NodeCmd.Source } else { $null }
 
 if (-not $NodeExe) {
   Write-Error "Node.js não encontrado. Instale em https://nodejs.org/"
@@ -13,37 +14,21 @@ if (-not $NodeExe) {
 $ScriptPath = Resolve-Path (Join-Path $PSScriptRoot "..\scripts\sync-djen-local.mjs")
 
 # Variáveis de ambiente — preencha antes de rodar
-$BaseUrl    = "https://SEU-PROJETO.vercel.app"   # <-- substitua pela URL do Vercel
-$CronSecret = "SUA-CHAVE-SECRETA"                # <-- substitua pelo CRON_SECRET
+$BaseUrl    = "https://processos.cpaadvogados.com.br"   # <-- substitua pela URL do Vercel
+$CronSecret = "76b760b60bd3ee427072911871333fdeff8426443076cd647af9a895d92c2b83"                # <-- substitua pelo CRON_SECRET
 
+$Argumento = "`"$ScriptPath`" --base `"$BaseUrl`" --secret `"$CronSecret`""
+
+# Remove tarefa anterior se existir
 Unregister-ScheduledTask -TaskName $NomeTarefa -Confirm:$false -ErrorAction SilentlyContinue
 
-$Env = @(
-  New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
-)
+$Acao     = New-ScheduledTaskAction -Execute $NodeExe -Argument $Argumento -WorkingDirectory (Split-Path $ScriptPath)
+$Gatilho  = New-ScheduledTaskTrigger -Daily -At "09:00"
+$Config   = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -RestartCount 0
+$Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
 
-$Acao = New-ScheduledTaskAction `
-  -Execute $NodeExe `
-  -Argument "`"$ScriptPath`" --base `"$BaseUrl`" --secret `"$CronSecret`"" `
-  -WorkingDirectory (Split-Path $ScriptPath)
+Register-ScheduledTask -TaskName $NomeTarefa -Action $Acao -Trigger $Gatilho -Settings $Config -Principal $Principal -Description 'CPA Advogados - Sync DJEN diario' -Force
 
-$Gatilho1 = New-ScheduledTaskTrigger -AtLogOn
-$Gatilho2 = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 30) `
-  -At "06:00" -Daily -RepetitionDuration (New-TimeSpan -Hours 16)
-
-$Config = New-ScheduledTaskSettingsSet `
-  -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
-  -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 5) `
-  -StartWhenAvailable
-
-Register-ScheduledTask `
-  -TaskName $NomeTarefa `
-  -Action $Acao `
-  -Trigger $Gatilho1, $Gatilho2 `
-  -Settings $Config `
-  -Principal (New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest) `
-  -Description "CPA Advogados — Sincronização automática de publicações DJEN"
-
-Write-Host ""
-Write-Host "Tarefa '$NomeTarefa' instalada!" -ForegroundColor Green
-Write-Host "  Executa ao fazer login e a cada 30 min das 06h às 22h"
+Write-Host ''
+Write-Host ('Tarefa ' + $NomeTarefa + ' instalada!') -ForegroundColor Green
+Write-Host '  Executa todo dia as 09:00 (ou assim que o PC ligar, se estava desligado)'
