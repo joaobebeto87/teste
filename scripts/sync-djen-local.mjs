@@ -88,7 +88,11 @@ async function fetchAllForOab(oab, desde) {
     url.searchParams.set("ufOab", oab.uf);
     url.searchParams.set("itensPorPagina", String(itensPorPagina));
     url.searchParams.set("pagina", String(pagina));
-    if (desde) url.searchParams.set("dataDisponibilizacaoInicio", desde);
+    if (desde) {
+      // API do DJEN espera DD/MM/YYYY
+      const [ano, mes, dia] = desde.split("-");
+      url.searchParams.set("dataDisponibilizacaoInicio", `${dia}/${mes}/${ano}`);
+    }
     const res = await fetch(url, {
       headers: { Accept: "application/json", "Accept-Language": "pt-BR,pt;q=0.9", "User-Agent": BROWSER_UA },
       signal: AbortSignal.timeout(30000),
@@ -144,6 +148,7 @@ async function main() {
 
   for (const oab of OABS) {
     try {
+      process.stdout.write(`  Buscando ${oab.numero}/${oab.uf} — ${oab.label}... `);
       const items = await fetchAllForOab(oab, desde);
       perOab.push({ oab: `${oab.numero}/${oab.uf}`, label: oab.label, total: items.length });
       console.log(`  ${oab.numero}/PE — ${oab.label}: ${items.length} publicações`);
