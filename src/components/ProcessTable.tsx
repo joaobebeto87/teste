@@ -14,6 +14,7 @@ export interface ProcessRow {
   type?: string | null;
   client?: string | null;
   parties?: string | null;
+  clientName?: string | null;
   category?: string | null;
   subject?: string;
   createdByName?: string;
@@ -26,7 +27,7 @@ export interface ProcessRow {
 }
 
 export type ProcessColumnKey =
-  | "marcador" | "number" | "tipo" | "parties" | "subject"
+  | "marcador" | "number" | "tipo" | "parties" | "clientName" | "subject"
   | "createdByName" | "category" | "status" | "lastMovementAt" | "deadline" | "archivedAt";
 
 const COLUMN_LABELS: Record<ProcessColumnKey, string> = {
@@ -34,6 +35,7 @@ const COLUMN_LABELS: Record<ProcessColumnKey, string> = {
   number: "Nº do Processo",
   tipo: "Tipo",
   parties: "Partes",
+  clientName: "Cliente",
   subject: "Assunto",
   createdByName: "Cadastrado por",
   category: "Categoria",
@@ -70,6 +72,8 @@ function sortValue(row: ProcessRow, key: ProcessColumnKey): string | null {
       return row.number ?? null;
     case "parties":
       return row.parties ?? null;
+    case "clientName":
+      return row.clientName ?? null;
     case "subject":
       return row.subject ?? null;
     case "createdByName":
@@ -221,6 +225,12 @@ export default function ProcessTable({
                       return (
                         <td key={col} className={`px-6 py-3 max-w-xs truncate ${cellClass}`}>
                           {p.parties || <span className="text-stone-400">—</span>}
+                        </td>
+                      );
+                    case "clientName":
+                      return (
+                        <td key={col} className="px-6 py-3 max-w-[160px] truncate text-stone-700">
+                          {p.clientName || <span className="text-stone-400">—</span>}
                         </td>
                       );
                     case "subject":

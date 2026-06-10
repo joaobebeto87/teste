@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, isSocioOrAbove } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { sendTaskAssignedEmail, sendTaskAvailableEmail } from "@/lib/email";
 import { writeFile, mkdir } from "fs/promises";
@@ -29,14 +29,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !isSocioOrAbove(session.user)) {
     return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
   }
 
   const form = await req.formData();
   const title = (form.get("title") as string | null)?.trim();
   const description = (form.get("description") as string | null)?.trim() || null;
-  const assignedToId = (form.get("assignedToId") as string | null)?.trim() || null; // vazio = sem responsável
+  const clientName = (form.get("clientName") as string | null)?.trim() || null;
+  const assignedToId = (form.get("assignedToId") as string | null)?.trim() || null;
   const processId = (form.get("processId") as string | null)?.trim() || null;
   const deadline = form.get("deadline") as string | null;
   const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
@@ -48,8 +49,15 @@ export async function POST(req: NextRequest) {
   const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   for (const file of files) {
     const name = file.name.toLowerCase();
-    const isAllowed = file.type === "application/pdf" || file.type === DOCX_MIME || name.endsWith(".pdf") || name.endsWith(".docx");
-    if (!isAllowed) return NextResponse.json({ error: `O arquivo "${file.name}" não é um PDF nem um Word (.docx).` }, { status: 400 });
+    const isAllowed =
+      file.type === "application/pdf" ||
+      file.type === DOCX_MIME ||
+      file.type === "image/jpeg" ||
+      name.endsWith(".pdf") ||
+      name.endsWith(".docx") ||
+      name.endsWith(".jpg") ||
+      name.endsWith(".jpeg");
+    if (!isAllowed) return NextResponse.json({ error: `O arquivo "${file.name}" não é um PDF, Word ou JPEG.` }, { status: 400 });
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: `O arquivo "${file.name}" excede 15 MB.` }, { status: 400 });
   }
 
@@ -79,6 +87,7 @@ export async function POST(req: NextRequest) {
     data: {
       title,
       description,
+      clientName,
       assignedToId,
       processId,
       assignedById: session.user.id,
@@ -112,9 +121,9 @@ export async function POST(req: NextRequest) {
     }).catch(console.error);
   } else {
     // tarefa sem responsável: avisa todos os assessores para reivindicarem
-    const assessores = await prisma.user.findMany({ where: { role: "ASSESSOR" }, select: { email: true } });
+    const estagiarios = await prisma.user.findMany({ where: { role: "ESTAGIARIO" }, select: { email: true } });
     sendTaskAvailableEmail({
-      to: assessores.map((a) => a.email).filter(Boolean),
+      to: estagiarios.map((a) => a.email).filter(Boolean),
       fromName: session.user.name ?? "Administrador",
       taskTitle: title,
       taskDescription: description,

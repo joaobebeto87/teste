@@ -1,294 +1,264 @@
 ﻿import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, isSocioOrAbove, canVerPublicacoes } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { Prisma } from "@prisma/client";
 import { differenceInCalendarDays } from "date-fns";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import Link from "next/link";
-import { getDeadlineStatus, deadlineRowClass, deadlineCellClass, deadlineBadgeClass, deadlineBadgeText, statusBadgeClass, statusLabel } from "@/lib/utils";
+
+function isTrabalhista(number: string): boolean {
+  const digits = number.replace(/\D/g, "");
+  return digits.length >= 14 && digits[13] === "5";
+}
+
+function urgencyColors(tasks: { deadline: Date }[], now: Date): { border: string; chip: string; text: string } {
+  let hue = 120;
+  if (tasks.length > 0) {
+    const MAX_TASKS = 10;
+    const HORIZON_DAYS = 14;
+    const countScore = Math.min(tasks.length / MAX_TASKS, 1);
+    const timeScore =
+      tasks.reduce((sum, t) => {
+        const d = differenceInCalendarDays(new Date(t.deadline), now);
+        return sum + (d <= 0 ? 1 : Math.max(0, 1 - d / HORIZON_DAYS));
+      }, 0) / tasks.length;
+    hue = Math.round((1 - (countScore + timeScore) / 2) * 120);
+  }
+  return {
+    border: `hsl(${hue},72%,40%)`,
+    chip: `hsl(${hue},60%,93%)`,
+    text: `hsl(${hue},72%,40%)`,
+  };
+}
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
+  if (!session) return null;
 
-  const isAdmin = session!.user.role === "ADMIN";
+  const isStaff = isSocioOrAbove(session.user);
+  const canPublicacoes = canVerPublicacoes(session.user);
   const now = new Date();
 
-  const openDeadlineWhere: Prisma.ProcessWhereInput = {
-    status: "ATIVO",
-    OR: [{ deadline: null }, { deadline: { gte: now } }],
-  };
-
-  const [
-    totalProcesses,
-    activeProcesses,
-    openDeadlineTotal,
-    openJudicialCount,
-    openAdminCount,
-    pendingTasks,
-    prefeituraCount,
-    prefeituraOpenCount,
-    escritorioCount,
-    escritorioOpenCount,
-    comTarefaCount,
-    comTarefaJudicialCount,
-    comTarefaAdminCount,
-    tasksByUser,
-  ] = await Promise.all([
-    prisma.process.count(),
-    prisma.process.findMany({
-      where: { status: "ATIVO" },
-      include: { createdBy: { select: { name: true } } },
-      orderBy: { deadline: "asc" },
-      take: 10,
-    }),
-    prisma.process.count({ where: openDeadlineWhere }),
-    prisma.process.count({ where: { ...openDeadlineWhere, type: "JUDICIAL" } }),
-    prisma.process.count({ where: { ...openDeadlineWhere, type: "ADMINISTRATIVO" } }),
-    prisma.task.count({
-      where: { assignedToId: session!.user.id, status: { not: "CONCLUIDA" } },
-    }),
-    prisma.process.count({ where: { client: "PREFEITURA" } }),
-    prisma.process.count({ where: { client: "PREFEITURA", ...openDeadlineWhere } }),
-    prisma.process.count({ where: { client: "ESCRITORIO" } }),
-    prisma.process.count({ where: { client: "ESCRITORIO", ...openDeadlineWhere } }),
-    prisma.process.count({ where: { tasks: { some: {} } } }),
-    prisma.process.count({ where: { tasks: { some: {} }, type: "JUDICIAL" } }),
-    prisma.process.count({ where: { tasks: { some: {} }, type: "ADMINISTRATIVO" } }),
-    isAdmin
-      ? prisma.user.findMany({
-          where: { name: { in: ["Pedro Morais", "Lígia Rafaela"] } },
-          select: {
-            id: true,
-            name: true,
-            tasksReceived: {
-              where: { status: { not: "CONCLUIDA" } },
-              select: { id: true, deadline: true },
-            },
+  if (isStaff) {
+    const [rawPublicacoes, users] = await Promise.all([
+      canPublicacoes
+        ? prisma.process.findMany({
+            where: { syncCreatedAt: { not: null } },
+            select: { id: true, number: true, client: true, syncCreatedAt: true },
+          })
+        : Promise.resolve([] as { id: string; number: string; client: string | null; syncCreatedAt: Date | null }[]),
+      prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          tasksReceived: {
+            where: { status: { not: "CONCLUIDA" } },
+            select: { id: true, deadline: true },
           },
-        })
-      : Promise.resolve([]),
-  ]);
+        },
+        orderBy: { name: "asc" },
+      }),
+    ]);
 
-  const expiring = activeProcesses.filter((p) => p.deadline && differenceInCalendarDays(new Date(p.deadline), now) <= 3);
-  const expired = activeProcesses.filter((p) => p.deadline && differenceInCalendarDays(new Date(p.deadline), now) < 0);
+    const publicacoesFiltradas = canPublicacoes
+      ? rawPublicacoes.filter((p) => !isTrabalhista(p.number))
+      : [];
+    const semMarcador = publicacoesFiltradas.filter((p) => !p.client);
+    const totalPublicacoes = publicacoesFiltradas.length;
 
-  function urgencyColors(tasks: { deadline: Date }[]): { border: string; chip: string; text: string } {
-    let hue = 120;
-    if (tasks.length > 0) {
-      const MAX_TASKS = 10;
-      const HORIZON_DAYS = 14;
-      const countScore = Math.min(tasks.length / MAX_TASKS, 1);
-      const timeScore =
-        tasks.reduce((sum, t) => {
-          const d = differenceInCalendarDays(new Date(t.deadline), now);
-          return sum + (d <= 0 ? 1 : Math.max(0, 1 - d / HORIZON_DAYS));
-        }, 0) / tasks.length;
-      hue = Math.round((1 - (countScore + timeScore) / 2) * 120);
-    }
-    return {
-      border: `hsl(${hue},72%,40%)`,
-      chip: `hsl(${hue},60%,93%)`,
-      text: `hsl(${hue},72%,40%)`,
-    };
+    return (
+      <div className="p-8">
+        <div className="mb-8">
+          <p className="eyebrow mb-1">Painel de Controle</p>
+          <h1 className="page-title">Bem-vindo, {session.user?.name?.split(" ")[0]}.</h1>
+          <p className="text-stone-500 text-sm mt-1">{format(now, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}</p>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {canPublicacoes && (
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                    </svg>
+                  </span>
+                  <div>
+                    <h2 className="section-title">Publicações DJEN</h2>
+                    <p className="text-xs text-stone-500">Tribunais estaduais e STJ (TRT/TST filtrados)</p>
+                  </div>
+                </div>
+                <Link href="/dashboard/publicacoes" className="text-sm font-medium text-gold-700 hover:text-gold-800 transition">
+                  Ver todas →
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="rounded-xl bg-stone-50 p-4">
+                  <p className="text-3xl font-bold tracking-tight text-navy-800 tabular-nums">{totalPublicacoes}</p>
+                  <p className="text-xs font-medium uppercase tracking-wider text-stone-500 mt-1">Total importadas</p>
+                </div>
+                <div className={`rounded-xl p-4 ${semMarcador.length > 0 ? "bg-amber-50" : "bg-emerald-50"}`}>
+                  <p className={`text-3xl font-bold tracking-tight tabular-nums ${semMarcador.length > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                    {semMarcador.length}
+                  </p>
+                  <p className={`text-xs font-medium uppercase tracking-wider mt-1 ${semMarcador.length > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                    {semMarcador.length > 0 ? "Precisam de classificação" : "Todas classificadas"}
+                  </p>
+                </div>
+              </div>
+
+              {semMarcador.length > 0 && (
+                <Link
+                  href="/dashboard/publicacoes"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium transition"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  Classificar {semMarcador.length} publicação(ões)
+                </Link>
+              )}
+              {semMarcador.length === 0 && totalPublicacoes === 0 && (
+                <p className="text-xs text-stone-400 text-center py-2">
+                  Nenhuma publicação importada. Execute a sincronização DJEN.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-navy-50 text-navy-700">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                </span>
+                <div>
+                  <h2 className="section-title">Consultivo — Pendentes</h2>
+                  <p className="text-xs text-stone-500">Tarefas em aberto por responsável</p>
+                </div>
+              </div>
+              <Link href="/dashboard/consultivo" className="text-sm font-medium text-gold-700 hover:text-gold-800 transition">
+                Ver todas →
+              </Link>
+            </div>
+
+            <div className="space-y-2">
+              {users.length === 0 && (
+                <p className="text-sm text-stone-400 text-center py-4">Nenhum usuário cadastrado.</p>
+              )}
+              {users.map((u) => {
+                const tasks = u.tasksReceived;
+                const colors = urgencyColors(tasks as any, now);
+                const hasUrgent = tasks.some((t) => differenceInCalendarDays(new Date(t.deadline), now) <= 3);
+                return (
+                  <Link
+                    key={u.id}
+                    href={`/dashboard/consultivo?assignee=${u.id}`}
+                    className="flex items-center justify-between rounded-xl border px-4 py-3 transition hover:shadow-sm hover:border-stone-300"
+                    style={tasks.length > 0 ? { borderColor: colors.border } : { borderColor: "#e7e5e4" }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold flex-shrink-0"
+                        style={tasks.length > 0 ? { backgroundColor: colors.chip, color: colors.text } : { backgroundColor: "#f5f5f4", color: "#78716c" }}
+                      >
+                        {u.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-navy-800">{u.name.split(" ")[0]}</p>
+                        {hasUrgent && (
+                          <p className="text-[0.65rem] text-red-600 font-medium">Tarefa urgente</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {tasks.length > 0 ? (
+                        <>
+                          <span className="text-2xl font-bold tabular-nums" style={{ color: colors.text }}>{tasks.length}</span>
+                          <span className="text-xs text-stone-500">pendente(s)</span>
+                        </>
+                      ) : (
+                        <span className="text-stone-300 text-sm">sem tarefas</span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  const iconCls = "w-5 h-5";
-  const cards = [
-    {
-      label: "Total de Processos", value: totalProcesses, tone: "navy",
-      href: "/dashboard/processos",
-      icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />,
+  // Estagiário: suas tarefas pendentes
+  const minhasTarefas = await prisma.task.findMany({
+    where: {
+      assignedToId: session.user.id,
+      status: { not: "CONCLUIDA" },
     },
-    {
-      label: "Prazo em Aberto", value: openDeadlineTotal, tone: "gold",
-      subCounts: [
-        { label: "Judicial", value: openJudicialCount, href: "/dashboard/processos-judiciais?prazo=aberto" },
-        { label: "Administrativo", value: openAdminCount, href: "/dashboard/processos?prazo=aberto" },
-      ],
-      icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />,
-    },
-    {
-      label: "Vencendo em 3 dias", value: expiring.length, tone: "amber",
-      href: "/dashboard/processos?prazo=vencendo",
-      icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />,
-    },
-    {
-      label: "Prazo Expirado", value: expired.length, tone: "red",
-      href: "/dashboard/processos?prazo=expirado",
-      icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.74-3l-6.93-12a2 2 0 00-3.48 0l-6.93 12a2 2 0 001.74 3z" />,
-    },
-    ...(isAdmin
-      ? (["Pedro Morais", "Lígia Rafaela"] as const).map((nome) => {
-          const u = tasksByUser.find((x) => x.name === nome);
-          const tasks = u ? u.tasksReceived : [];
-          const colors = urgencyColors(tasks);
-          return {
-            label: `Tarefas — ${nome.split(" ")[0]}`,
-            value: tasks.length,
-            tone: "navy" as const,
-            urgency: colors,
-            href: u ? `/dashboard/caixa-entrada?assignee=${u.id}` : "/dashboard/caixa-entrada",
-            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />,
-          };
-        })
-      : [
-          {
-            label: "Tarefas Pendentes",
-            value: pendingTasks,
-            tone: "navy" as const,
-            href: "/dashboard/caixa-entrada",
-            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />,
-          },
-        ]),
-    {
-      label: "Processos da Prefeitura", value: prefeituraCount, tone: "sky",
-      href: "/dashboard/processos-judiciais?client=PREFEITURA",
-      subCounts: [{ label: "Prazo em Aberto", value: prefeituraOpenCount, href: "/dashboard/processos-judiciais?client=PREFEITURA&prazo=aberto" }],
-      icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1" />,
-    },
-    {
-      label: "Processos do Escritório", value: escritorioCount, tone: "navy",
-      href: "/dashboard/processos-judiciais?client=ESCRITORIO",
-      subCounts: [{ label: "Prazo em Aberto", value: escritorioOpenCount, href: "/dashboard/processos-judiciais?client=ESCRITORIO&prazo=aberto" }],
-      icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2m-16 0H3m4-14h.01M11 7h.01M15 7h.01M7 11h.01M11 11h.01M15 11h.01M7 15h2.5m3.5 0h2" />,
-    },
-    {
-      label: "Com Tarefa Vinculada", value: comTarefaCount, tone: "emerald",
-      subCounts: [
-        { label: "Judicial", value: comTarefaJudicialCount, href: "/dashboard/processos-judiciais?comTarefa=true" },
-        { label: "Administrativo", value: comTarefaAdminCount, href: "/dashboard/processos?comTarefa=true" },
-      ],
-      icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7l2 2 4-4" />,
-    },
-  ];
-  const toneNumber: Record<string, string> = {
-    navy: "text-navy-800", gold: "text-gold-600", amber: "text-amber-600", red: "text-red-600",
-    sky: "text-sky-600", emerald: "text-emerald-600",
-  };
-  const toneChip: Record<string, string> = {
-    navy: "bg-navy-50 text-navy-700", gold: "bg-gold-100 text-gold-700",
-    amber: "bg-amber-50 text-amber-600", red: "bg-red-50 text-red-600",
-    sky: "bg-sky-50 text-sky-700", emerald: "bg-emerald-50 text-emerald-700",
-  };
+    select: { id: true, title: true, clientName: true, deadline: true, status: true },
+    orderBy: { deadline: "asc" },
+  });
 
   return (
     <div className="p-8">
       <div className="mb-8">
         <p className="eyebrow mb-1">Painel de Controle</p>
-        <h1 className="page-title">Bem-vindo, {session?.user?.name?.split(" ")[0]}.</h1>
+        <h1 className="page-title">Bem-vindo, {session.user?.name?.split(" ")[0]}.</h1>
+        <p className="text-stone-500 text-sm mt-1">{format(now, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {cards.map((card) => {
-          const u = "urgency" in card ? card.urgency : undefined;
-          const href = "href" in card ? card.href : undefined;
-          return (
-            <div
-              key={card.label}
-              className={`card p-5 relative ${href ? "transition-shadow hover:shadow-md" : ""}`}
-              style={u ? { borderColor: u.border, borderWidth: "2px" } : undefined}
-            >
-              {href && (
-                <Link href={href} aria-label={card.label} className="absolute inset-0 z-10 rounded-[inherit]" />
-              )}
-              <span
-                className={`flex h-9 w-9 items-center justify-center rounded-lg ${u ? "" : toneChip[card.tone]}`}
-                style={u ? { backgroundColor: u.chip, color: u.text } : undefined}
-              >
-                <svg className={iconCls} fill="none" stroke="currentColor" viewBox="0 0 24 24">{card.icon}</svg>
-              </span>
-              <p
-                className={`mt-4 text-3xl font-bold tracking-tight tabular-nums ${u ? "" : toneNumber[card.tone]}`}
-                style={u ? { color: u.text } : undefined}
-              >
-                {card.value}
-              </p>
-              <p className="mt-1 text-[0.7rem] font-medium uppercase tracking-wider leading-snug text-stone-500">{card.label}</p>
-              {"subCounts" in card && card.subCounts && (
-                <div className="relative z-20 mt-3 flex flex-wrap gap-2">
-                  {card.subCounts.map((sub) => {
-                    const chipCls = "flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-stone-600 transition-colors";
-                    const inner = (
-                      <>
-                        <span className={toneNumber[card.tone]}>{sub.value}</span>
-                        <span className="text-stone-400">{sub.label}</span>
-                      </>
-                    );
-                    return "href" in sub && sub.href ? (
-                      <Link key={sub.label} href={sub.href} className={`${chipCls} hover:bg-stone-200`}>{inner}</Link>
-                    ) : (
-                      <span key={sub.label} className={chipCls}>{inner}</span>
-                    );
-                  })}
-                </div>
-              )}
+      <div className="card p-6 max-w-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-navy-50 text-navy-700">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+            </span>
+            <div>
+              <h2 className="section-title">Minhas Tarefas</h2>
+              <p className="text-xs text-stone-500">{minhasTarefas.length} tarefa(s) pendente(s)</p>
             </div>
-          );
-        })}
-      </div>
-
-      <div className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4">
-          <h2 className="section-title">Processos Ativos — Mais Urgentes</h2>
-          <Link href="/dashboard/processos" className="text-sm font-medium text-gold-700 transition hover:text-gold-800">
-            Ver todos →
+          </div>
+          <Link href="/dashboard/consultivo" className="text-sm font-medium text-gold-700 hover:text-gold-800 transition">
+            Ver todas →
           </Link>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-stone-200 bg-stone-50 text-left text-xs uppercase tracking-wider text-stone-500">
-                <th className="px-6 py-3 font-medium">Nº Processo</th>
-                <th className="px-6 py-3 font-medium">Assunto</th>
-                <th className="px-6 py-3 font-medium">Responsável</th>
-                <th className="px-6 py-3 font-medium">Status</th>
-                <th className="px-6 py-3 font-medium">Prazo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeProcesses.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-10 text-center text-stone-400">Nenhum processo ativo.</td></tr>
-              )}
-              {activeProcesses.map((p, i) => {
-                const status = getDeadlineStatus(p.deadline);
-                const zebraClass = status !== "expired" ? (i % 2 === 0 ? "bg-white" : "bg-[#f7f5ef]") : "";
-                return (
-                  <tr key={p.id} className={`border-b border-stone-100 transition hover:bg-stone-100 ${deadlineRowClass(status)} ${zebraClass}`}>
-                    <td className={`px-6 py-3 font-mono font-semibold ${deadlineCellClass(status)}`}>
-                      <div className="flex items-center gap-2">
-                        {p.client === "ESCRITORIO" && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-navy-700 flex-shrink-0" title="Escritório"></span>
-                        )}
-                        {p.client === "PREFEITURA" && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-sky-400 flex-shrink-0" title="Prefeitura"></span>
-                        )}
-                        <Link href={`/dashboard/processos/${p.id}`} className="text-navy-700 transition hover:text-gold-700 hover:underline">
-                          {p.number}
-                        </Link>
-                      </div>
-                    </td>
-                    <td className={`px-6 py-3 ${deadlineCellClass(status)}`}>{p.subject}</td>
-                    <td className="px-6 py-3 text-stone-600">{p.createdBy.name}</td>
-                    <td className="px-6 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadgeClass(p.status)}`}>
-                        {statusLabel(p.status)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3">
-                      {p.deadline ? (
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${deadlineBadgeClass(status)}`}>
-                          {format(new Date(p.deadline), "dd/MM/yyyy")} · {deadlineBadgeText(status, p.deadline)}
-                        </span>
-                      ) : (
-                        <span className="text-stone-400 text-xs">Sem prazo</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+
+        {minhasTarefas.length === 0 && (
+          <p className="text-sm text-stone-400 text-center py-8">Nenhuma tarefa pendente.</p>
+        )}
+        <div className="space-y-2">
+          {minhasTarefas.map((t) => {
+            const d = differenceInCalendarDays(new Date(t.deadline), now);
+            const expired = d < 0;
+            const urgent = d >= 0 && d <= 3;
+            return (
+              <Link
+                key={t.id}
+                href={`/dashboard/consultivo/${t.id}`}
+                className={`flex items-center justify-between rounded-xl border px-4 py-3 transition hover:shadow-sm ${
+                  expired ? "border-red-200 bg-red-50" : urgent ? "border-amber-200 bg-amber-50" : "border-stone-200 hover:border-stone-300"
+                }`}
+              >
+                <div>
+                  <p className={`text-sm font-medium ${expired ? "text-red-800" : "text-navy-800"}`}>{t.title}</p>
+                  {t.clientName && <p className="text-xs text-stone-500 mt-0.5">{t.clientName}</p>}
+                </div>
+                <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                  expired ? "bg-red-100 text-red-700" : urgent ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-600"
+                }`}>
+                  {format(new Date(t.deadline), "dd/MM/yyyy")}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

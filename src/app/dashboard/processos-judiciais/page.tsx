@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth";
-import { authOptions, canJudicial } from "@/lib/auth";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -9,41 +9,21 @@ import ProcessTable, { ProcessRow, ProcessColumnKey } from "@/components/Process
 export default async function ProcessosJudiciaisPage({
   searchParams,
 }: {
-  searchParams: { client?: string; prazo?: string; comTarefa?: string; pai?: string };
+  searchParams: { prazo?: string; comTarefa?: string; marcador?: string };
 }) {
   const session = await getServerSession(authOptions);
-  const userCanJudicial = canJudicial(session?.user);
-
-  // N1 assessors só veem processos da Prefeitura
-  if (!userCanJudicial) {
-    if (searchParams?.client !== "PREFEITURA") redirect("/dashboard/processos-judiciais?client=PREFEITURA");
-  }
+  if (!session) redirect("/");
 
   const now = new Date();
 
-  const activeClient =
-    searchParams?.client === "PREFEITURA" ? "PREFEITURA"
-    : searchParams?.client === "ESCRITORIO" ? "ESCRITORIO"
-    : null;
-
-  // "Do meu pai" = publicação só no nome do pai (contém PAULO, sem PROPRIO) e que
-  // você ainda NÃO classificou (sem marcador). Quando recebe um marcador
-  // (Prefeitura/Escritório), sai daqui e passa a aparecer na aba correspondente.
-  const PAI_FILTER: Prisma.ProcessWhereInput = {
-    AND: [
-      { publicacaoOabs: { contains: "PAULO" } },
-      { NOT: { publicacaoOabs: { contains: "PROPRIO" } } },
-      { client: null },
-    ],
+  const where: Prisma.ProcessWhereInput = {
+    status: { not: "ARQUIVADO" },
+    type: "JUDICIAL",
   };
 
-  const where: Prisma.ProcessWhereInput = activeClient
-    ? { status: { not: "ARQUIVADO" }, type: "JUDICIAL", client: activeClient }
-    : { status: { not: "ARQUIVADO" }, type: { not: "ADMINISTRATIVO" }, NOT: PAI_FILTER };
-
   const partesFiltro: string[] = [];
+
   if (searchParams?.prazo === "aberto") {
-    where.status = "ATIVO";
     where.OR = [{ deadline: null }, { deadline: { gte: now } }];
     partesFiltro.push("Prazo em Aberto");
   }
@@ -51,12 +31,18 @@ export default async function ProcessosJudiciaisPage({
     where.tasks = { some: {} };
     partesFiltro.push("Com Tarefa Vinculada");
   }
+  if (searchParams?.marcador === "civel") {
+    where.client = "ESCRITORIO";
+    partesFiltro.push("Cível");
+  } else if (searchParams?.marcador === "pessoal") {
+    where.client = "PREFEITURA";
+    partesFiltro.push("Pessoal");
+  }
+
   const filtroAtivo = partesFiltro.join(" · ");
 
-  const [countTodos, countPrefeitura, countEscritorio, processes, lastSyncRow] = await Promise.all([
-    prisma.process.count({ where: { status: { not: "ARQUIVADO" }, type: { not: "ADMINISTRATIVO" }, NOT: PAI_FILTER } }),
-    prisma.process.count({ where: { status: { not: "ARQUIVADO" }, type: "JUDICIAL", client: "PREFEITURA" } }),
-    prisma.process.count({ where: { status: { not: "ARQUIVADO" }, type: "JUDICIAL", client: "ESCRITORIO" } }),
+  const [totalCount, processes, lastSyncRow] = await Promise.all([
+    prisma.process.count({ where: { status: { not: "ARQUIVADO" }, type: "JUDICIAL" } }),
     prisma.process.findMany({
       where,
       include: {
@@ -68,9 +54,9 @@ export default async function ProcessosJudiciaisPage({
     prisma.appConfig.findUnique({ where: { key: "pje_last_sync_at" } }),
   ]);
 
-  // Horário da última sincronização: usado para destacar o que veio nela.
   const lastSyncMs = lastSyncRow?.value ? new Date(lastSyncRow.value).getTime() : null;
-  const sameAsLastSync = (d: Date | null) => lastSyncMs !== null && d !== null && d.getTime() === lastSyncMs;
+  const sameAsLastSync = (d: Date | null) =>
+    lastSyncMs !== null && d !== null && d.getTime() === lastSyncMs;
 
   const rows: ProcessRow[] = (processes as any[]).map((p) => {
     const isNewFromSync = sameAsLastSync(p.syncCreatedAt);
@@ -78,6 +64,7 @@ export default async function ProcessosJudiciaisPage({
       id: p.id,
       number: p.number,
       parties: p.parties,
+      clientName: p.clientName,
       subject: p.subject,
       createdByName: p.createdBy.name,
       status: p.status,
@@ -85,92 +72,77 @@ export default async function ProcessosJudiciaisPage({
       lastMovementAt: p.movements[0]?.createdAt.toISOString() ?? null,
       deadline: p.deadline ? p.deadline.toISOString() : null,
       isNewFromSync,
-      // verde só se foi movimentado na última sync E não for um processo novo (que já fica azul)
       hasRecentSyncMovement: !isNewFromSync && sameAsLastSync(p.lastSyncMovementAt),
     };
   });
 
-  const judicialColumns: ProcessColumnKey[] = [
-    "marcador", "number", "parties", "subject", "createdByName", "status", "lastMovementAt", "deadline",
-  ];
-
-  const novoHref = activeClient
-    ? `/dashboard/processos-judiciais/novo?defaultClient=${activeClient}`
-    : "/dashboard/processos-judiciais/novo";
-
-  const limparFiltroHref = activeClient
-    ? `/dashboard/processos-judiciais?client=${activeClient}`
-    : "/dashboard/processos-judiciais";
-
-  const tabs: { key: string | null; label: string; count: number; href: string }[] = [
-    ...(userCanJudicial
-      ? [{ key: null, label: "Todos", count: countTodos, href: "/dashboard/processos-judiciais" }]
-      : []),
-    { key: "PREFEITURA", label: "Pessoal", count: countPrefeitura, href: "/dashboard/processos-judiciais?client=PREFEITURA" },
-    ...(userCanJudicial
-      ? [{ key: "ESCRITORIO", label: "Cível", count: countEscritorio, href: "/dashboard/processos-judiciais?client=ESCRITORIO" }]
-      : []),
+  const columns: ProcessColumnKey[] = [
+    "marcador", "number", "clientName", "parties", "subject", "status", "lastMovementAt", "deadline",
   ];
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="eyebrow mb-1">Acervo · Processos Judiciais</p>
+          <p className="eyebrow mb-1">Acervo</p>
           <h1 className="page-title">Processos Judiciais</h1>
           <p className="text-stone-500 text-sm mt-1">
-            {processes.length} processo(s){filtroAtivo ? " · " : " cadastrado(s)"}
+            {totalCount} processo(s) cadastrado(s)
             {filtroAtivo && (
               <>
+                {" · "}
                 <span className="font-medium text-navy-700">{filtroAtivo}</span>
                 {" "}
-                <Link href={limparFiltroHref} className="text-gold-700 hover:text-gold-800 hover:underline">
+                <Link href="/dashboard/processos-judiciais" className="text-gold-700 hover:text-gold-800 hover:underline">
                   (limpar filtro)
                 </Link>
               </>
             )}
           </p>
         </div>
-        <Link href={novoHref} className="btn-primary">
+        <Link href="/dashboard/processos-judiciais/novo" className="btn-primary">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Novo Processo Judicial
+          Novo Processo
         </Link>
       </div>
 
-      <div className="flex gap-1.5 mb-4">
-        {tabs.map((tab) => {
-          const active =
-            tab.key === null ? !activeClient
-            : activeClient === tab.key;
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition ${
-                active
-                  ? tab.key === "PREFEITURA"
-                    ? "bg-sky-50 text-sky-700 border-sky-200"
-                    : tab.key === "ESCRITORIO"
-                    ? "bg-navy-50 text-navy-700 border-navy-200"
-                    : "bg-stone-100 text-stone-800 border-stone-300"
-                  : "text-stone-500 border-transparent hover:text-navy-700 hover:bg-stone-50 hover:border-stone-200"
-              }`}
-            >
-              {tab.key === "PREFEITURA" && (
-                <span className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0"></span>
-              )}
-              {tab.key === "ESCRITORIO" && (
-                <span className="w-2 h-2 rounded-full bg-navy-700 flex-shrink-0"></span>
-              )}
-              {tab.label}
-              <span className={`text-xs rounded-full px-1.5 py-0.5 font-normal ${active ? "bg-white/70 text-stone-600" : "bg-stone-100 text-stone-500"}`}>
-                {tab.count}
-              </span>
-            </Link>
-          );
-        })}
+      {/* Filtros rápidos por marcador */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        <Link
+          href="/dashboard/processos-judiciais"
+          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+            !searchParams?.marcador
+              ? "bg-stone-100 text-stone-800 border-stone-300"
+              : "text-stone-500 border-transparent hover:text-navy-700 hover:bg-stone-50 hover:border-stone-200"
+          }`}
+        >
+          Todos
+          <span className="text-[0.65rem] rounded-full px-1.5 py-0.5 bg-stone-200 text-stone-600">{totalCount}</span>
+        </Link>
+        <Link
+          href="/dashboard/processos-judiciais?marcador=civel"
+          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+            searchParams?.marcador === "civel"
+              ? "bg-navy-50 text-navy-700 border-navy-200"
+              : "text-stone-500 border-transparent hover:text-navy-700 hover:bg-stone-50 hover:border-stone-200"
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-navy-700 flex-shrink-0"></span>
+          Cível
+        </Link>
+        <Link
+          href="/dashboard/processos-judiciais?marcador=pessoal"
+          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+            searchParams?.marcador === "pessoal"
+              ? "bg-sky-50 text-sky-700 border-sky-200"
+              : "text-stone-500 border-transparent hover:text-sky-700 hover:bg-stone-50 hover:border-stone-200"
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0"></span>
+          Pessoal
+        </Link>
       </div>
 
       <div className="card overflow-hidden">
@@ -180,16 +152,10 @@ export default async function ProcessosJudiciaisPage({
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span> Prazo expirado</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-200 border border-sky-300 inline-block"></span> Novo na última sincronização</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-200 border border-emerald-300 inline-block"></span> Movimentado na última sincronização</span>
-          {!activeClient && (
-            <span className="ml-auto flex items-center gap-3">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-navy-700 inline-block"></span> Cível</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span> Pessoal</span>
-            </span>
-          )}
         </div>
         <ProcessTable
           rows={rows}
-          columns={judicialColumns}
+          columns={columns}
           syncHighlight
           emptyLabel="Nenhum processo judicial cadastrado."
         />

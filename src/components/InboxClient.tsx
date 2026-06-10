@@ -12,6 +12,7 @@ interface Task {
   id: string;
   title: string;
   description: string | null;
+  clientName: string | null;
   assignedTo: { id: string; name: string; email: string } | null;
   assignedBy: { name: string };
   process: { id: string; number: string } | null;
@@ -25,17 +26,18 @@ interface Props {
   tasks: Task[];
   users: User[];
   processes: ProcessOption[];
-  isAdmin: boolean;
+  isStaff: boolean;     // ADMIN ou SOCIO — vê todas as tarefas e pode delegar
   currentUserId: string;
   initialAssignee?: string;
 }
 
-export default function InboxClient({ tasks, users, processes, isAdmin, currentUserId, initialAssignee = "" }: Props) {
+export default function InboxClient({ tasks, users, processes, isStaff, currentUserId, initialAssignee = "" }: Props) {
   const router = useRouter();
   const [filterAssignee, setFilterAssignee] = useState(initialAssignee);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [clientName, setClientName] = useState("");
   const [assignedToId, setAssignedToId] = useState("");
   const [processId, setProcessId] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -46,6 +48,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editClientName, setEditClientName] = useState("");
   const [editDeadline, setEditDeadline] = useState("");
   const [editAssignedToId, setEditAssignedToId] = useState("");
   const [editProcessId, setEditProcessId] = useState("");
@@ -54,13 +57,12 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
 
   const today = new Date().toISOString().split("T")[0];
 
-  // Filtro por responsável (admin). Mantém a URL em sincronia para deep-link do dashboard.
   const visibleTasks = filterAssignee ? tasks.filter((t) => t.assignedTo?.id === filterAssignee) : tasks;
   const filterName = users.find((u) => u.id === filterAssignee)?.name;
 
   function changeFilter(id: string) {
     setFilterAssignee(id);
-    router.replace(id ? `/dashboard/caixa-entrada?assignee=${id}` : "/dashboard/caixa-entrada");
+    router.replace(id ? `/dashboard/consultivo?assignee=${id}` : "/dashboard/consultivo");
   }
 
   function handleFiles(selected: FileList | null) {
@@ -69,31 +71,37 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
     const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     const invalid = arr.find((f) => {
       const name = f.name.toLowerCase();
-      return f.type !== "application/pdf" && f.type !== DOCX_MIME && !name.endsWith(".pdf") && !name.endsWith(".docx");
+      return (
+        f.type !== "application/pdf" &&
+        f.type !== DOCX_MIME &&
+        f.type !== "image/jpeg" &&
+        !name.endsWith(".pdf") &&
+        !name.endsWith(".docx") &&
+        !name.endsWith(".jpg") &&
+        !name.endsWith(".jpeg")
+      );
     });
-    if (invalid) { setError(`O arquivo "${invalid.name}" não é um PDF nem um Word (.docx).`); return; }
+    if (invalid) { setError(`O arquivo "${invalid.name}" não é um PDF, Word ou JPEG.`); return; }
     setError("");
     setFiles((prev) => [...prev, ...arr]);
   }
 
   async function createTask() {
-    if (!title || !deadline) {
-      setError("Título e prazo são obrigatórios.");
-      return;
-    }
+    if (!title || !deadline) { setError("Título e prazo são obrigatórios."); return; }
     setLoading(true);
     setError("");
     const fd = new FormData();
     fd.append("title", title);
     fd.append("description", description);
-    fd.append("assignedToId", assignedToId); // vazio = sem responsável
+    fd.append("clientName", clientName);
+    fd.append("assignedToId", assignedToId);
     fd.append("processId", processId);
     fd.append("deadline", deadline);
     files.forEach((f) => fd.append("files", f));
     const res = await fetch("/api/tarefas", { method: "POST", body: fd });
     setLoading(false);
     if (!res.ok) { setError((await res.json()).error); return; }
-    setTitle(""); setDescription(""); setAssignedToId(""); setProcessId(""); setDeadline(""); setFiles([]);
+    setTitle(""); setDescription(""); setClientName(""); setAssignedToId(""); setProcessId(""); setDeadline(""); setFiles([]);
     setShowForm(false);
     router.refresh();
   }
@@ -123,6 +131,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
     setEditingTask(task);
     setEditTitle(task.title);
     setEditDescription(task.description ?? "");
+    setEditClientName(task.clientName ?? "");
     setEditDeadline(task.deadline.split("T")[0]);
     setEditAssignedToId(task.assignedTo?.id ?? "");
     setEditProcessId(task.process?.id ?? "");
@@ -142,6 +151,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
       body: JSON.stringify({
         title: editTitle,
         description: editDescription,
+        clientName: editClientName,
         deadline: editDeadline,
         assignedToId: editAssignedToId,
         processId: editProcessId,
@@ -157,8 +167,8 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
     <>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="eyebrow mb-1">{isAdmin ? "Demandas do setor" : "Suas demandas"}</p>
-          <h1 className="page-title">{isAdmin ? "Caixa de Entrada" : "Minha Caixa de Entrada"}</h1>
+          <p className="eyebrow mb-1">{isStaff ? "Demandas do setor" : "Suas demandas"}</p>
+          <h1 className="page-title">{isStaff ? "Consultivo" : "Meu Consultivo"}</h1>
           <p className="text-stone-500 text-sm mt-1">
             {visibleTasks.length} tarefa(s)
             {filterAssignee && filterName && (
@@ -173,7 +183,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {isAdmin && (
+          {isStaff && (
             <select
               value={filterAssignee}
               onChange={(e) => changeFilter(e.target.value)}
@@ -186,7 +196,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
               ))}
             </select>
           )}
-          {isAdmin && (
+          {isStaff && (
             <button onClick={() => setShowForm(!showForm)} className="btn-primary">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -197,7 +207,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
         </div>
       </div>
 
-      {showForm && isAdmin && (
+      {showForm && isStaff && (
         <div className="card p-6 mb-6">
           <h2 className="section-title mb-4">Nova Tarefa Delegada</h2>
           <div className="space-y-4">
@@ -205,6 +215,10 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
               <div className="col-span-2">
                 <label className="field-label">Título da Tarefa <span className="text-red-500">*</span></label>
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full input" placeholder="Título da tarefa..." />
+              </div>
+              <div>
+                <label className="field-label">Cliente</label>
+                <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full input" placeholder="Nome do cliente..." />
               </div>
               <div>
                 <label className="field-label">Responsável <span className="text-stone-400 font-normal">(opcional)</span></label>
@@ -217,7 +231,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
                 <label className="field-label">Prazo <span className="text-red-500">*</span></label>
                 <input type="date" value={deadline} min={today} onChange={(e) => setDeadline(e.target.value)} className="w-full input" />
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="field-label">Processo relacionado <span className="text-stone-400 font-normal">(opcional)</span></label>
                 <select value={processId} onChange={(e) => setProcessId(e.target.value)} className="w-full input">
                   <option value="">Nenhum</option>
@@ -229,13 +243,19 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full input resize-none" placeholder="Detalhes da tarefa (opcional)..." />
               </div>
               <div className="col-span-2">
-                <label className="field-label">Anexar documentos (PDF ou Word) <span className="text-stone-400 font-normal">(opcional)</span></label>
+                <label className="field-label">Anexar documentos <span className="text-stone-400 font-normal">(PDF, Word ou JPEG)</span></label>
                 <label className="flex items-center justify-center gap-2 border-2 border-dashed border-stone-300 rounded-lg px-4 py-3 text-sm text-stone-500 cursor-pointer hover:border-gold-400 hover:text-gold-700 transition">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                   </svg>
-                  Clique para selecionar arquivos (PDF ou Word)
-                  <input type="file" accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx" multiple className="hidden" onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
+                  Clique para selecionar arquivos
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+                  />
                 </label>
                 {files.length > 0 && (
                   <ul className="mt-2 space-y-1">
@@ -270,7 +290,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
         </div>
       )}
 
-      {/* Modal de edição de tarefa (admin) */}
+      {/* Modal de edição de tarefa */}
       {editingTask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
@@ -282,6 +302,14 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                  <label className="field-label">Cliente</label>
+                  <input type="text" value={editClientName} onChange={(e) => setEditClientName(e.target.value)} className="w-full input" placeholder="Nome do cliente..." />
+                </div>
+                <div>
+                  <label className="field-label">Prazo <span className="text-red-500">*</span></label>
+                  <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="w-full input" />
+                </div>
+                <div>
                   <label className="field-label">Responsável</label>
                   <select value={editAssignedToId} onChange={(e) => setEditAssignedToId(e.target.value)} className="w-full input">
                     <option value="">Disponível para reivindicar</option>
@@ -289,16 +317,12 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Prazo <span className="text-red-500">*</span></label>
-                  <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="w-full input" />
+                  <label className="field-label">Processo relacionado</label>
+                  <select value={editProcessId} onChange={(e) => setEditProcessId(e.target.value)} className="w-full input">
+                    <option value="">Nenhum</option>
+                    {processes.map((p) => (<option key={p.id} value={p.id}>{p.number} — {p.subject}</option>))}
+                  </select>
                 </div>
-              </div>
-              <div>
-                <label className="field-label">Processo relacionado</label>
-                <select value={editProcessId} onChange={(e) => setEditProcessId(e.target.value)} className="w-full input">
-                  <option value="">Nenhum</option>
-                  {processes.map((p) => (<option key={p.id} value={p.id}>{p.number} — {p.subject}</option>))}
-                </select>
               </div>
               <div>
                 <label className="field-label">Descrição</label>
@@ -320,7 +344,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-stone-500 bg-stone-50 border-b border-stone-200">
                 <th className="px-6 py-3 font-medium">Tarefa</th>
-                {isAdmin && <th className="px-6 py-3 font-medium">Responsável</th>}
+                {isStaff && <th className="px-6 py-3 font-medium">Responsável</th>}
                 <th className="px-6 py-3 font-medium">Delegado por</th>
                 <th className="px-6 py-3 font-medium">Status</th>
                 <th className="px-6 py-3 font-medium">Prazo</th>
@@ -330,8 +354,8 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
             <tbody>
               {visibleTasks.length === 0 && (
                 <tr>
-                  <td colSpan={isAdmin ? 6 : 5} className="px-6 py-12 text-center text-stone-400">
-                    {filterAssignee ? "Nenhuma tarefa para este responsável." : "Nenhuma tarefa na caixa de entrada."}
+                  <td colSpan={isStaff ? 6 : 5} className="px-6 py-12 text-center text-stone-400">
+                    {filterAssignee ? "Nenhuma tarefa para este responsável." : "Nenhuma tarefa consultiva."}
                   </td>
                 </tr>
               )}
@@ -339,15 +363,18 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
                 const dlStatus = getDeadlineStatus(new Date(task.deadline));
                 const isDone = task.status === "CONCLUIDA";
                 const isUnassigned = !task.assignedTo;
-                const canManage = isAdmin || task.assignedTo?.id === currentUserId;
+                const canManage = isStaff || task.assignedTo?.id === currentUserId;
                 const zebraClass = (isDone || dlStatus !== "expired") ? (i % 2 === 0 ? "bg-white" : "bg-[#f7f5ef]") : "";
                 return (
                   <tr key={task.id} className={`border-b border-stone-100 hover:bg-stone-100 transition ${isDone ? "" : deadlineRowClass(dlStatus)} ${zebraClass}`}>
                     <td className={`px-6 py-3 ${isDone ? "text-stone-400" : deadlineCellClass(dlStatus)}`}>
-                      <Link href={`/dashboard/caixa-entrada/${task.id}`} className={`font-medium hover:text-gold-700 hover:underline ${isDone ? "line-through" : ""}`}>
+                      <Link href={`/dashboard/consultivo/${task.id}`} className={`font-medium hover:text-gold-700 hover:underline ${isDone ? "line-through" : ""}`}>
                         {task.title}
                       </Link>
                       <div className="flex flex-wrap items-center gap-2 mt-1">
+                        {task.clientName && (
+                          <span className="text-[0.7rem] bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded-full">{task.clientName}</span>
+                        )}
                         {isUnassigned && !isDone && (
                           <span className="text-[0.7rem] font-medium uppercase tracking-wide bg-gold-100 text-gold-700 px-1.5 py-0.5 rounded-full">Disponível</span>
                         )}
@@ -360,7 +387,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
                       </div>
                       {task.description && (<p className="text-xs text-stone-400 mt-0.5 truncate max-w-xs">{task.description}</p>)}
                     </td>
-                    {isAdmin && (
+                    {isStaff && (
                       <td className="px-6 py-3 text-stone-600">
                         {task.assignedTo ? task.assignedTo.name : <span className="text-gold-700">Disponível</span>}
                       </td>
@@ -381,8 +408,8 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
                     </td>
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-2">
-                        <Link href={`/dashboard/caixa-entrada/${task.id}`} className="text-xs font-medium text-gold-700 hover:text-gold-800 transition">Abrir →</Link>
-                        {isUnassigned && !isDone && !isAdmin && (
+                        <Link href={`/dashboard/consultivo/${task.id}`} className="text-xs font-medium text-gold-700 hover:text-gold-800 transition">Abrir →</Link>
+                        {isUnassigned && !isDone && !isStaff && (
                           <button onClick={() => claimTask(task.id)} className="text-xs bg-gold-100 hover:bg-gold-200 text-gold-800 px-2.5 py-1 rounded-lg transition font-medium">
                             Reivindicar
                           </button>
@@ -395,7 +422,7 @@ export default function InboxClient({ tasks, users, processes, isAdmin, currentU
                             <button onClick={() => updateStatus(task.id, "CONCLUIDA")} className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg transition">Concluir</button>
                           </>
                         )}
-                        {isAdmin && (
+                        {isStaff && (
                           <>
                             <button onClick={() => openEdit(task)} className="text-xs bg-stone-100 hover:bg-stone-200 text-stone-700 px-2.5 py-1 rounded-lg transition">Editar</button>
                             <button onClick={() => deleteTask(task.id)} className="text-xs bg-red-50 hover:bg-red-100 text-red-700 px-2 py-1 rounded-lg transition">Excluir</button>
