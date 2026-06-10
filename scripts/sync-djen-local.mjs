@@ -166,17 +166,25 @@ async function main() {
     }
   } catch { console.log("  (não foi possível verificar — buscaremos capas para todos)\n"); }
 
-  // Buscar DataJud apenas para os processos novos
+  // Buscar DataJud apenas para os processos novos — em paralelo (concorrência 20)
   const capas = {};
   const cnjsParaCapas = [...cnjsNovos];
   if (cnjsParaCapas.length > 0) {
-    console.log(`Buscando capas DataJud para ${cnjsParaCapas.length} processo(s) novo(s)...`);
-    for (const digits of cnjsParaCapas) {
-      const sigla = items.find(it =>
-        (it.numero_processo || it.numeroprocessocommascara || "").replace(/\D/g, "") === digits
-      )?.siglaTribunal;
-      capas[digits] = await fetchCapa(digits, sigla);
-      process.stdout.write(".");
+    console.log(`Buscando capas DataJud para ${cnjsParaCapas.length} processo(s) novo(s) (paralelo)...`);
+    const CONCURRENCY = 20;
+    let done = 0;
+    for (let i = 0; i < cnjsParaCapas.length; i += CONCURRENCY) {
+      const batch = cnjsParaCapas.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(async (digits) => {
+        const sigla = items.find(it =>
+          (it.numero_processo || it.numeroprocessocommascara || "").replace(/\D/g, "") === digits
+        )?.siglaTribunal;
+        capas[digits] = await fetchCapa(digits, sigla);
+        done++;
+        if (done % 50 === 0 || done === cnjsParaCapas.length) {
+          process.stdout.write(`\r  ${done}/${cnjsParaCapas.length} capas buscadas...`);
+        }
+      }));
     }
     console.log();
   }
