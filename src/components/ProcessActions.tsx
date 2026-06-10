@@ -13,12 +13,13 @@ interface Props {
   currentStatus: string;
   currentDeadline: string | null;
   currentClient: string | null;
+  currentClientName: string | null;
   currentParties: string | null;
   currentSubject: string;
   currentDescription: string;
 }
 
-export default function ProcessActions({ processId, isAdmin, canEdit, canEditMarker, processType, isJudicial, currentStatus, currentDeadline, currentClient, currentParties, currentSubject, currentDescription }: Props) {
+export default function ProcessActions({ processId, isAdmin, canEdit, canEditMarker, processType, isJudicial, currentStatus, currentDeadline, currentClient, currentClientName, currentParties, currentSubject, currentDescription }: Props) {
   const router = useRouter();
   const [showMovement, setShowMovement] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -31,6 +32,7 @@ export default function ProcessActions({ processId, isAdmin, canEdit, canEditMar
   const [status, setStatus] = useState(currentStatus);
   const [deadline, setDeadline] = useState(currentDeadline);
   const [client, setClient] = useState(currentClient ?? "");
+  const [clientName, setClientName] = useState(currentClientName ?? "");
   const [parties, setParties] = useState(currentParties ?? "");
   const [subject, setSubject] = useState(currentSubject);
   const [description, setDescription] = useState(currentDescription);
@@ -42,10 +44,18 @@ export default function ProcessActions({ processId, isAdmin, canEdit, canEditMar
     const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     const invalid = arr.find((f) => {
       const name = f.name.toLowerCase();
-      return f.type !== "application/pdf" && f.type !== DOCX_MIME && !name.endsWith(".pdf") && !name.endsWith(".docx");
+      return (
+        f.type !== "application/pdf" &&
+        f.type !== DOCX_MIME &&
+        f.type !== "image/jpeg" &&
+        !name.endsWith(".pdf") &&
+        !name.endsWith(".docx") &&
+        !name.endsWith(".jpg") &&
+        !name.endsWith(".jpeg")
+      );
     });
     if (invalid) {
-      setError(`O arquivo "${invalid.name}" não é um PDF nem um Word (.docx).`);
+      setError(`O arquivo "${invalid.name}" não é um PDF, Word ou JPEG.`);
       return;
     }
     setError("");
@@ -92,6 +102,7 @@ export default function ProcessActions({ processId, isAdmin, canEdit, canEditMar
       body: JSON.stringify({
         subject: subject.trim(),
         description: description.trim() || null,
+        clientName: clientName.trim() || null,
         deadline: deadline || null,
         ...(isAdmin && { status }),
         ...(isJudicial && { parties: parties || null }),
@@ -243,15 +254,15 @@ export default function ProcessActions({ processId, isAdmin, canEdit, canEditMar
           </div>
 
           <div>
-            <label className="field-label">Anexar documentos (PDF ou Word)</label>
+            <label className="field-label">Anexar documentos (PDF, Word ou JPEG)</label>
             <label className="flex items-center justify-center gap-2 border-2 border-dashed border-stone-300 rounded-lg px-4 py-3 text-sm text-stone-500 cursor-pointer hover:border-gold-400 hover:text-gold-700 transition">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
               </svg>
-              Clique para selecionar arquivos (PDF ou Word)
+              Clique para selecionar arquivos
               <input
                 type="file"
-                accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
+                accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg"
                 multiple
                 className="hidden"
                 onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
@@ -323,6 +334,19 @@ export default function ProcessActions({ processId, isAdmin, canEdit, canEditMar
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               className="w-full input"
+            />
+          </div>
+          <div>
+            <label className="field-label">
+              Cliente
+              <span className="text-stone-400 font-normal"> (padrão = réu)</span>
+            </label>
+            <input
+              type="text"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              className="w-full input"
+              placeholder="Nome do cliente identificado..."
             />
           </div>
           <div>
