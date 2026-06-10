@@ -9,23 +9,17 @@ interface User {
   name: string;
   email: string;
   role: string;
-  accessLevel: number;
   createdAt: string;
 }
 
 interface Props { users: User[]; currentUserId: string; }
 
-type Perfil = "N1" | "N2" | "ADMIN";
+type Perfil = "ADMIN" | "SOCIO" | "ESTAGIARIO";
 
-function perfilOf(u: User): Perfil {
-  if (u.role === "ADMIN") return "ADMIN";
-  return u.accessLevel >= 2 ? "N2" : "N1";
-}
-function perfilLabel(p: Perfil): string {
-  return p === "ADMIN" ? "Administrador" : p === "N2" ? "Assessor · Nível 2" : "Assessor · Nível 1";
-}
-function perfilPayload(p: Perfil) {
-  return { role: p === "ADMIN" ? "ADMIN" : "ASSESSOR", accessLevel: p === "N2" ? 2 : 1 };
+function perfilLabel(role: string): string {
+  if (role === "ADMIN") return "Administrador";
+  if (role === "SOCIO") return "Sócio";
+  return "Estagiário";
 }
 
 export default function UsersClient({ users: initial, currentUserId }: Props) {
@@ -34,37 +28,33 @@ export default function UsersClient({ users: initial, currentUserId }: Props) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [perfil, setPerfil] = useState<Perfil>("N1");
+  const [perfil, setPerfil] = useState<Perfil>("SOCIO");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   async function createUser() {
-    if (!name || !email || !password) {
-      setError("Preencha todos os campos.");
-      return;
-    }
-    setLoading(true);
-    setError("");
+    if (!name || !email || !password) { setError("Preencha todos os campos."); return; }
+    setLoading(true); setError("");
     const res = await fetch("/api/usuarios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password, ...perfilPayload(perfil) }),
+      body: JSON.stringify({ name, email, password, role: perfil }),
     });
     const data = await res.json();
     setLoading(false);
     if (!res.ok) { setError(data.error); return; }
     setSuccess(`Usuário "${data.name}" criado com sucesso!`);
-    setName(""); setEmail(""); setPassword(""); setPerfil("N1");
+    setName(""); setEmail(""); setPassword(""); setPerfil("SOCIO");
     setShowForm(false);
     router.refresh();
   }
 
-  async function changePerfil(id: string, p: Perfil) {
+  async function changeRole(id: string, role: Perfil) {
     const res = await fetch(`/api/usuarios/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(perfilPayload(p)),
+      body: JSON.stringify({ role }),
     });
     if (!res.ok) { const d = await res.json(); alert(d.error); return; }
     router.refresh();
@@ -103,11 +93,11 @@ export default function UsersClient({ users: initial, currentUserId }: Props) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="field-label">Nome Completo <span className="text-red-500">*</span></label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full input" placeholder="Nome do assessor..." />
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full input" placeholder="Nome completo..." />
             </div>
             <div>
               <label className="field-label">E-mail <span className="text-red-500">*</span></label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full input" placeholder="email@prefeitura.gov.br" />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full input" placeholder="nome@cpaadvogados.com.br" />
             </div>
             <div>
               <label className="field-label">Senha Inicial <span className="text-red-500">*</span></label>
@@ -116,17 +106,15 @@ export default function UsersClient({ users: initial, currentUserId }: Props) {
             <div>
               <label className="field-label">Perfil de acesso</label>
               <select value={perfil} onChange={(e) => setPerfil(e.target.value as Perfil)} className="w-full input">
-                <option value="N1">Assessor — Nível 1 (administrativos + tarefas)</option>
-                <option value="N2">Assessor — Nível 2 (também processos judiciais)</option>
-                <option value="ADMIN">Administrador (acesso total)</option>
+                <option value="ESTAGIARIO">Estagiário</option>
+                <option value="SOCIO">Sócio</option>
+                <option value="ADMIN">Administrador</option>
               </select>
             </div>
           </div>
-
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mt-4">{error}</div>
           )}
-
           <div className="flex gap-3 mt-4">
             <button onClick={createUser} disabled={loading} className="btn-primary">{loading ? "Salvando..." : "Cadastrar"}</button>
             <button onClick={() => setShowForm(false)} className="btn-ghost">Cancelar</button>
@@ -150,23 +138,24 @@ export default function UsersClient({ users: initial, currentUserId }: Props) {
               const isSelf = user.id === currentUserId;
               return (
                 <tr key={user.id} className="border-b border-stone-100 hover:bg-stone-50 transition">
-                  <td className="px-6 py-3 font-medium text-navy-800">{user.name}
-                    {isSelf && (<span className="ml-2 text-xs bg-gold-100 text-gold-700 px-1.5 py-0.5 rounded-full">você</span>)}
+                  <td className="px-6 py-3 font-medium text-navy-800">
+                    {user.name}
+                    {isSelf && <span className="ml-2 text-xs bg-gold-100 text-gold-700 px-1.5 py-0.5 rounded-full">você</span>}
                   </td>
                   <td className="px-6 py-3 text-stone-600">{user.email}</td>
                   <td className="px-6 py-3">
                     {isSelf ? (
                       <span className="px-2 py-1 rounded-full text-xs font-medium bg-navy-100 text-navy-700">
-                        {perfilLabel(perfilOf(user))}
+                        {perfilLabel(user.role)}
                       </span>
                     ) : (
                       <select
-                        value={perfilOf(user)}
-                        onChange={(e) => changePerfil(user.id, e.target.value as Perfil)}
+                        value={user.role}
+                        onChange={(e) => changeRole(user.id, e.target.value as Perfil)}
                         className="rounded-lg border border-stone-300 bg-white px-2 py-1 text-xs text-navy-800 focus:outline-none focus:ring-2 focus:ring-gold-300/70"
                       >
-                        <option value="N1">Assessor · Nível 1</option>
-                        <option value="N2">Assessor · Nível 2</option>
+                        <option value="ESTAGIARIO">Estagiário</option>
+                        <option value="SOCIO">Sócio</option>
                         <option value="ADMIN">Administrador</option>
                       </select>
                     )}

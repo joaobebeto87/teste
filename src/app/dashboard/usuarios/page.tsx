@@ -10,7 +10,7 @@ export default async function UsuariosPage() {
   if (session?.user?.role !== "ADMIN") redirect("/dashboard");
 
   const rawUsers = await prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, accessLevel: true, createdAt: true },
+    select: { id: true, name: true, email: true, role: true, createdAt: true },
     orderBy: { name: "asc" },
   });
   const users = rawUsers.map((u) => ({ ...u, createdAt: u.createdAt.toISOString() }));

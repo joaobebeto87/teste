@@ -3,8 +3,7 @@ import "next-auth";
 declare module "next-auth" {
   interface User {
     id: string;
-    role: string;
-    accessLevel?: number;
+    role: string; // ADMIN | SOCIO | ESTAGIARIO
   }
   interface Session {
     user: {
@@ -13,7 +12,6 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       role: string;
-      accessLevel: number;
     };
   }
 }
@@ -22,6 +20,5 @@ declare module "next-auth/jwt" {
   interface JWT {
     id: string;
     role: string;
-    accessLevel?: number;
   }
 }

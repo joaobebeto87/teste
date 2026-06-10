@@ -8,13 +8,12 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  name        String
-  email       String   @unique
-  password    String
-  role        String   @default("ASSESSOR")
-  accessLevel Int      @default(1)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("SOCIO") // ADMIN | SOCIO | ESTAGIARIO
+  createdAt DateTime @default(now())
 
   processesCreated Process[]      @relation("CreatedBy")
   movements        Movement[]
@@ -34,6 +33,7 @@ model Process {
   number      String    @unique
   subject     String
   parties     String?
+  clientName  String?   // nome do cliente identificado (padrão = réu, alterável)
   description String?
   status      String    @default("ATIVO")
   type        String    @default("ADMINISTRATIVO")
@@ -87,6 +87,7 @@ model Task {
   id           String    @id @default(cuid())
   title        String
   description  String?
+  clientName   String?   // cliente vinculado à demanda consultiva
   assignedToId String?
   assignedTo   User?     @relation("AssignedTo", fields: [assignedToId], references: [id])
   assignedById String

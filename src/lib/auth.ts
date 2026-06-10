@@ -21,7 +21,7 @@ export const authOptions: NextAuthOptions = {
         if (!user) return null;
         const valid = await bcrypt.compare(credentials.password, user.password);
         if (!valid) return null;
-        return { id: user.id, name: user.name, email: user.email, role: user.role, accessLevel: user.accessLevel };
+        return { id: user.id, name: user.name, email: user.email, role: user.role };
       },
     }),
   ],
@@ -30,7 +30,6 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as { role: string }).role;
-        token.accessLevel = (user as { accessLevel?: number }).accessLevel ?? 1;
       }
       return token;
     },
@@ -38,15 +37,34 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
-        session.user.accessLevel = (token.accessLevel as number) ?? 1;
       }
       return session;
     },
   },
 };
 
-// Helper: quem pode gerenciar processos judiciais (admin ou assessor nível 2+)
-export function canJudicial(user?: { role?: string; accessLevel?: number } | null): boolean {
-  if (!user) return false;
-  return user.role === "ADMIN" || (user.accessLevel ?? 1) >= 2;
+// ADMIN e SOCIO têm acesso completo (exceto área admin)
+// ESTAGIARIO tem acesso restrito
+export function isAdmin(user?: { role?: string } | null): boolean {
+  return user?.role === "ADMIN";
+}
+
+export function isSocioOrAbove(user?: { role?: string } | null): boolean {
+  return user?.role === "ADMIN" || user?.role === "SOCIO";
+}
+
+export function canJudicial(user?: { role?: string } | null): boolean {
+  return !!user?.role; // todos os perfis podem ver processos judiciais
+}
+
+export function canDelegarTarefa(user?: { role?: string } | null): boolean {
+  return user?.role === "ADMIN" || user?.role === "SOCIO";
+}
+
+export function canExcluirProcesso(user?: { role?: string } | null): boolean {
+  return user?.role === "ADMIN" || user?.role === "SOCIO";
+}
+
+export function canVerPublicacoes(user?: { role?: string } | null): boolean {
+  return user?.role === "ADMIN" || user?.role === "SOCIO";
 }
