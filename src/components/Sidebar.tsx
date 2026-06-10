@@ -108,12 +108,15 @@ function SidebarContent() {
 
         {/* Logo CPA */}
         <div className="border-b border-white/10 px-5 py-7 flex flex-col items-center">
-          <svg width="48" height="42" viewBox="0 0 48 42" fill="none" xmlns="http://www.w3.org/2000/svg" className="mb-3">
-            <polygon points="24,1 47,41 1,41" fill="none" stroke="#c4a44a" strokeWidth="2"/>
-            <polygon points="14,27 24,8 34,27" fill="none" stroke="#c4a44a" strokeWidth="1.5"/>
+          <svg width="56" height="49" viewBox="0 0 120 105" fill="none" xmlns="http://www.w3.org/2000/svg" className="mb-3">
+            {/* Triângulo grande — topo */}
+            <polygon points="60,2 5,68 115,68" fill="none" stroke="#c4a44a" strokeWidth="4"/>
+            {/* Triângulo esquerdo — C */}
+            <polygon points="26,71 2,103 50,103" fill="none" stroke="#c4a44a" strokeWidth="4"/>
+            {/* Triângulo direito — A */}
+            <polygon points="94,71 70,103 118,103" fill="none" stroke="#c4a44a" strokeWidth="4"/>
           </svg>
-          <p className="text-white text-[0.7rem] font-bold tracking-[0.25em] uppercase leading-tight">Cavalcanti & Pinto</p>
-          <p className="text-white text-[0.7rem] font-bold tracking-[0.25em] uppercase leading-tight">de Azevedo</p>
+          <p className="text-white text-[0.65rem] font-semibold tracking-[0.2em] uppercase leading-tight">Cavalcanti &amp; Pinto de Azevedo</p>
           <div className="mx-auto mt-3 h-px w-10 bg-gold-500/50" />
           <p className="mt-2 text-[0.6rem] font-medium uppercase tracking-[0.2em] text-navy-300">
             Gestão de Processos
