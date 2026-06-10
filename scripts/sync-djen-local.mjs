@@ -19,14 +19,58 @@ function arg(name) {
 
 const BASE_URL    = (arg("--base")   || process.env.GP_BASE_URL    || "").replace(/\/+$/, "");
 const CRON_SECRET = (arg("--secret") || process.env.GP_CRON_SECRET || "");
+const DESDE_OVERRIDE = arg("--desde"); // força uma data específica (YYYY-MM-DD)
 
 if (!BASE_URL || !CRON_SECRET) {
   console.error("ERRO: defina GP_BASE_URL e GP_CRON_SECRET (ou use --base e --secret).");
   process.exit(1);
 }
 
-const DJEN_URL   = "https://comunicaapi.pje.jus.br/api/v1/comunicacao";
-const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const DJEN_URL    = "https://comunicaapi.pje.jus.br/api/v1/comunicacao";
+const DATAJUD_BASE = "https://api-publica.datajud.cnj.jus.br";
+const DATAJUD_KEY  = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw==";
+const BROWSER_UA  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+const TJ_TT_TO_UF = {
+  "01":"ac","02":"al","03":"ap","04":"am","05":"ba","06":"ce","07":"df","08":"es",
+  "09":"go","10":"ma","11":"mt","12":"ms","13":"mg","14":"pa","15":"pb","16":"pr",
+  "17":"pe","18":"pi","19":"rj","20":"rn","21":"rs","22":"ro","23":"rr","24":"sc",
+  "25":"se","26":"sp","27":"to",
+};
+
+function cnjToAlias(digits) {
+  if (digits.length !== 20) return null;
+  const j = digits[13], tt = digits.substring(14,16), n = parseInt(tt,10);
+  switch(j) {
+    case "8": { const uf = TJ_TT_TO_UF[tt]; return uf ? `api_publica_tj${uf}` : null; }
+    case "5": return n >= 1 ? `api_publica_trt${n}` : null;
+    case "4": return n >= 1 ? `api_publica_trf${n}` : null;
+    case "3": return tt === "00" ? "api_publica_stj" : null;
+    default:  return null;
+  }
+}
+
+async function fetchCapa(digits, sigla) {
+  const alias = cnjToAlias(digits) ?? (sigla ? `api_publica_${sigla.toLowerCase()}` : null);
+  if (!alias) return null;
+  try {
+    const res = await fetch(`${DATAJUD_BASE}/${alias}/_search`, {
+      method: "POST",
+      headers: { Authorization: `APIKey ${DATAJUD_KEY}`, "Content-Type": "application/json", "User-Agent": BROWSER_UA },
+      body: JSON.stringify({ size: 1, query: { match: { numeroProcesso: digits } } }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hit = data?.hits?.hits?.[0]?._source;
+    if (!hit) return null;
+    const movimentos = (Array.isArray(hit.movimentos) ? hit.movimentos : [])
+      .map(m => ({ data: m?.dataHora ?? "", nome: m?.nome ?? "" }))
+      .filter(m => m.nome)
+      .sort((a,b) => new Date(b.data) - new Date(a.data));
+    return { classe: hit.classe?.nome, assunto: hit.assuntos?.[0]?.nome, orgaoJulgador: hit.orgaoJulgador?.nome, dataAjuizamento: hit.dataAjuizamento, movimentos };
+  } catch { return null; }
+}
 
 // OABs monitoradas — deve espelhar MONITORED_OABS em src/lib/djen.ts
 const OABS = [
@@ -34,7 +78,7 @@ const OABS = [
   { numero: "51184", uf: "PE", label: "João Roberto" },
 ];
 
-async function fetchAllForOab(oab) {
+async function fetchAllForOab(oab, desde) {
   const itensPorPagina = 200;
   const all = [];
   let pagina = 1;
@@ -44,8 +88,10 @@ async function fetchAllForOab(oab) {
     url.searchParams.set("ufOab", oab.uf);
     url.searchParams.set("itensPorPagina", String(itensPorPagina));
     url.searchParams.set("pagina", String(pagina));
+    if (desde) url.searchParams.set("dataDisponibilizacaoInicio", desde);
     const res = await fetch(url, {
       headers: { Accept: "application/json", "Accept-Language": "pt-BR,pt;q=0.9", "User-Agent": BROWSER_UA },
+      signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) throw new Error(`DJEN HTTP ${res.status} (OAB ${oab.numero}/${oab.uf})`);
     const data = await res.json();
@@ -58,17 +104,47 @@ async function fetchAllForOab(oab) {
   return all;
 }
 
+async function getUltimaSincronizacao() {
+  try {
+    const res = await fetch(`${BASE_URL}/api/cron/sincronizar-djen`, {
+      headers: { "x-cron-secret": CRON_SECRET },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.lastSyncAt ?? null;
+  } catch { return null; }
+}
+
 async function main() {
   console.log(`\n=== CPA Advogados — Sync DJEN ===`);
   console.log(`Sistema: ${BASE_URL}`);
   console.log(`Hora: ${new Date().toLocaleString("pt-BR")}\n`);
+
+  // Determinar data de início da busca
+  let desde = DESDE_OVERRIDE;
+  if (!desde) {
+    const lastSync = await getUltimaSincronizacao();
+    if (lastSync) {
+      // Usa a data da última sync (sem hora, para pegar o dia completo)
+      desde = lastSync.substring(0, 10);
+      console.log(`  Ultima sincronizacao: ${new Date(lastSync).toLocaleString("pt-BR")}`);
+    } else {
+      // Primeira vez: busca últimos 7 dias
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      desde = d.toISOString().substring(0, 10);
+      console.log(`  Primeira sincronizacao — buscando ultimos 7 dias`);
+    }
+  }
+  console.log(`  Buscando publicacoes desde: ${desde}\n`);
 
   const perOab = [];
   const byHash = new Map();
 
   for (const oab of OABS) {
     try {
-      const items = await fetchAllForOab(oab);
+      const items = await fetchAllForOab(oab, desde);
       perOab.push({ oab: `${oab.numero}/${oab.uf}`, label: oab.label, total: items.length });
       console.log(`  ${oab.numero}/PE — ${oab.label}: ${items.length} publicações`);
       for (const it of items) {
@@ -82,30 +158,45 @@ async function main() {
   }
 
   const items = Array.from(byHash.values());
-  console.log(`\nTotal de publicações distintas: ${items.length}`);
-  console.log("Enviando ao servidor...\n");
+  console.log(`\nTotal de publicacoes distintas: ${items.length}`);
 
-  let totalCreated = 0, totalSynced = 0;
+  // Buscar capas DataJud localmente para evitar timeout no servidor
+  const capas = {};
+  const numeros = [...new Set(items.map(it => (it.numero_processo || it.numeroprocessocommascara || "").replace(/\D/g,"")).filter(d => d.length === 20))];
+  console.log(`Buscando capas DataJud para ${numeros.length} processo(s)...`);
+  for (const digits of numeros) {
+    const sigla = items.find(it => (it.numero_processo || it.numeroprocessocommascara || "").replace(/\D/g,"") === digits)?.siglaTribunal;
+    capas[digits] = await fetchCapa(digits, sigla);
+    process.stdout.write(".");
+  }
+  if (numeros.length) console.log();
 
-  for (let i = 0; i < 12; i++) {
+  console.log("Enviando ao servidor em lotes...\n");
+
+  const BATCH_SIZE = 200;
+  let totalCreated = 0, totalSynced = 0, lote = 0;
+
+  for (let offset = 0; offset < items.length; offset += BATCH_SIZE) {
+    const batch = items.slice(offset, offset + BATCH_SIZE);
+    lote++;
     const res = await fetch(`${BASE_URL}/api/cron/sincronizar-djen/ingest`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
-      body: JSON.stringify({ items, perOab }),
+      body: JSON.stringify({ items: batch, perOab, capas }),
+      signal: AbortSignal.timeout(60000),
     });
     const data = await res.json();
     if (!res.ok) { console.error("ERRO do servidor:", data.error || res.status); process.exit(1); }
 
     totalCreated += data.created || 0;
     totalSynced  += data.synced  || 0;
-    console.log(`  Lote ${i + 1}: +${data.created} processos  +${data.synced} movimentações  restam ${data.remaining}`);
+    console.log(`  Lote ${lote}: +${data.created} processos  +${data.synced} movimentacoes  (${offset + batch.length}/${items.length})`);
     if ((data.errors || []).length) {
-      for (const e of data.errors.slice(0, 5)) console.log(`    aviso: ${e}`);
+      for (const e of data.errors.slice(0, 3)) console.log(`    aviso: ${e}`);
     }
-    if (!data.remaining || data.remaining <= 0) break;
   }
 
-  console.log(`\n✓ Concluído: ${totalCreated} processos criados, ${totalSynced} movimentações.\n`);
+  console.log(`\nConcluido: ${totalCreated} processos criados, ${totalSynced} movimentacoes.\n`);
 }
 
 main().catch((err) => { console.error("Falha:", err?.message || err); process.exit(1); });
