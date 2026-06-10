@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -21,9 +23,13 @@ export default async function SincronizarDjenPage() {
   const session = await getServerSession(authOptions);
   if (session?.user?.role !== "ADMIN") redirect("/dashboard");
 
-  const row = await prisma.appConfig.findUnique({ where: { key: "djen_last_result" } });
+  const [row, lastSyncRow] = await Promise.all([
+    prisma.appConfig.findUnique({ where: { key: "djen_last_result" } }),
+    prisma.appConfig.findUnique({ where: { key: "pje_last_sync_at" } }),
+  ]);
   let last: LastResult | null = null;
   try { last = row?.value ? (JSON.parse(row.value) as LastResult) : null; } catch { last = null; }
+  const lastSyncAt = lastSyncRow?.value ?? last?.at ?? null;
 
   return (
     <div className="p-8 max-w-3xl">
@@ -47,9 +53,12 @@ export default async function SincronizarDjenPage() {
 
       <div className="mt-4 card">
         <h2 className="section-title mb-2">Última sincronização</h2>
+        {lastSyncAt && (
+          <p className="text-sm text-stone-500 mb-4">{formatBR(lastSyncAt)}</p>
+        )}
         {last ? (
           <>
-            <p className="text-sm text-stone-500 mb-4">{formatBR(last.at)}</p>
+            {!lastSyncAt && <p className="text-sm text-stone-500 mb-4">{formatBR(last.at)}</p>}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
               <Stat label="Publicações novas"  value={last.found}     color="text-stone-700" />
               <Stat label="Processos criados"  value={last.created}   color="text-blue-600" />

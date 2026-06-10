@@ -14,6 +14,7 @@ export interface ProcessRow {
   type?: string | null;
   client?: string | null;
   parties?: string | null;
+  category?: string | null;
   subject?: string;
   createdByName?: string;
   status?: string;
@@ -26,7 +27,7 @@ export interface ProcessRow {
 
 export type ProcessColumnKey =
   | "marcador" | "number" | "tipo" | "parties" | "subject"
-  | "createdByName" | "status" | "lastMovementAt" | "deadline" | "archivedAt";
+  | "createdByName" | "category" | "status" | "lastMovementAt" | "deadline" | "archivedAt";
 
 const COLUMN_LABELS: Record<ProcessColumnKey, string> = {
   marcador: "Marcador",
@@ -35,6 +36,7 @@ const COLUMN_LABELS: Record<ProcessColumnKey, string> = {
   parties: "Partes",
   subject: "Assunto",
   createdByName: "Cadastrado por",
+  category: "Categoria",
   status: "Status",
   lastMovementAt: "Última Movimentação",
   deadline: "Prazo Fatal",
@@ -44,8 +46,8 @@ const COLUMN_LABELS: Record<ProcessColumnKey, string> = {
 const DATE_KEYS: ProcessColumnKey[] = ["lastMovementAt", "deadline", "archivedAt"];
 
 function clientLabel(client?: string | null): string {
-  if (client === "ESCRITORIO") return "Escritório";
-  if (client === "PREFEITURA") return "Prefeitura";
+  if (client === "ESCRITORIO") return "Cível";
+  if (client === "PREFEITURA") return "Pessoal";
   return "";
 }
 
@@ -72,6 +74,8 @@ function sortValue(row: ProcessRow, key: ProcessColumnKey): string | null {
       return row.subject ?? null;
     case "createdByName":
       return row.createdByName ?? null;
+    case "category":
+      return row.category ?? null;
     case "lastMovementAt":
       return row.lastMovementAt ?? null;
     case "deadline":
@@ -84,12 +88,14 @@ function sortValue(row: ProcessRow, key: ProcessColumnKey): string | null {
 export default function ProcessTable({
   rows,
   columns,
+  columnLabels,
   deadlineColoring = true,
   syncHighlight = false,
   emptyLabel = "Nenhum processo cadastrado.",
 }: {
   rows: ProcessRow[];
   columns: ProcessColumnKey[];
+  columnLabels?: Partial<Record<ProcessColumnKey, string>>;
   deadlineColoring?: boolean;
   syncHighlight?: boolean;
   emptyLabel?: string;
@@ -140,7 +146,7 @@ export default function ProcessTable({
                     onClick={() => toggleSort(col)}
                     className={`inline-flex items-center gap-1 uppercase tracking-wider transition hover:text-navy-700 ${active ? "text-navy-700" : ""}`}
                   >
-                    {COLUMN_LABELS[col]}
+                    {(columnLabels && columnLabels[col]) ?? COLUMN_LABELS[col]}
                     <span className="text-[0.6rem] leading-none">
                       {active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
                     </span>
@@ -183,12 +189,12 @@ export default function ProcessTable({
                           {p.client === "ESCRITORIO" ? (
                             <span className="inline-flex items-center gap-1.5 text-xs text-navy-700">
                               <span className="w-2.5 h-2.5 rounded-full bg-navy-700 flex-shrink-0"></span>
-                              Escritório
+                              Cível
                             </span>
                           ) : p.client === "PREFEITURA" ? (
                             <span className="inline-flex items-center gap-1.5 text-xs text-sky-700">
                               <span className="w-2.5 h-2.5 rounded-full bg-sky-400 flex-shrink-0"></span>
-                              Prefeitura
+                              Pessoal
                             </span>
                           ) : (
                             <span className="text-stone-400 text-xs">—</span>
@@ -223,6 +229,8 @@ export default function ProcessTable({
                       );
                     case "createdByName":
                       return <td key={col} className="px-6 py-3 text-stone-600">{p.createdByName}</td>;
+                    case "category":
+                      return <td key={col} className="px-6 py-3 text-stone-600">{(p as any).category || <span className="text-stone-400">—</span>}</td>;
                     case "status":
                       return (
                         <td key={col} className="px-6 py-3">

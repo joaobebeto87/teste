@@ -53,6 +53,8 @@ export default async function ProcessosPage({
   const rows: ProcessRow[] = processes.map((p) => ({
     id: p.id,
     number: p.number,
+    parties: p.parties,
+    category: p.category,
     subject: p.subject,
     createdByName: p.createdBy.name,
     status: p.status,
@@ -61,7 +63,7 @@ export default async function ProcessosPage({
   }));
 
   const adminColumns: ProcessColumnKey[] = [
-    "number", "subject", "createdByName", "status", "lastMovementAt", "deadline",
+    "parties", "subject", "category", "status", "deadline",
   ];
 
   return (
@@ -69,7 +71,7 @@ export default async function ProcessosPage({
       <div className="flex items-center justify-between mb-6">
         <div>
           <p className="eyebrow mb-1">Acervo</p>
-          <h1 className="page-title">Processos Administrativos</h1>
+          <h1 className="page-title">Consultivo</h1>
           <p className="text-stone-500 text-sm mt-1">
             {processes.length} processo(s){filtroAtivo ? " · " : " cadastrado(s)"}
             {filtroAtivo && (
@@ -87,7 +89,7 @@ export default async function ProcessosPage({
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Novo Processo
+          Nova demanda
         </Link>
       </div>
 
@@ -100,7 +102,8 @@ export default async function ProcessosPage({
         <ProcessTable
           rows={rows}
           columns={adminColumns}
-          emptyLabel={filtroAtivo ? `Nenhum processo com o filtro "${filtroAtivo}".` : "Nenhum processo cadastrado."}
+          columnLabels={{ parties: "Cliente", category: "Responsável" }}
+          emptyLabel={filtroAtivo ? `Nenhuma demanda com o filtro "${filtroAtivo}".` : "Nenhuma demanda cadastrada."}
         />
       </div>
     </div>

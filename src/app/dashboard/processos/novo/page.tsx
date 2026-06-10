@@ -1,43 +1,50 @@
-﻿"use client";
+"use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-export default function NovoProcessoPage() {
+interface User { id: string; name: string; }
+
+export default function NovaDemandaPage() {
   const router = useRouter();
+  const [client, setClient] = useState("");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("");
-  const [otherCategory, setOtherCategory] = useState("");
+  const [responsible, setResponsible] = useState("");
   const [deadline, setDeadline] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [users, setUsers] = useState<User[]>([]);
 
-  const CATEGORIES = ["Parecer Jurídico", "Resposta a Ofício", "Pedido de Informações"];
+  useEffect(() => {
+    fetch("/api/usuarios")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setUsers(Array.isArray(data) ? data : []))
+      .catch(() => setUsers([]));
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
-
-    const finalCategory = category === "Outro" ? otherCategory.trim() : category;
-    if (category === "Outro" && !finalCategory) {
-      setError("Especifique a categoria no campo \"Outro\".");
-      return;
-    }
-
     setLoading(true);
 
     const res = await fetch("/api/processos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subject, description, deadline, category: finalCategory }),
+      body: JSON.stringify({
+        subject,
+        description,
+        deadline,
+        parties: client,
+        category: responsible,
+      }),
     });
 
     setLoading(false);
     if (!res.ok) {
       const data = await res.json();
-      setError(data.error || "Erro ao criar processo");
+      setError(data.error || "Erro ao criar demanda");
       return;
     }
     const process = await res.json();
@@ -55,11 +62,25 @@ export default function NovoProcessoPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </Link>
-        <h1 className="page-title">Novo Processo</h1>
+        <h1 className="page-title">Nova demanda</h1>
       </div>
 
       <div className="card p-6">
         <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="field-label">
+              Cliente <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={client}
+              onChange={(e) => setClient(e.target.value)}
+              required
+              className="input"
+              placeholder="Nome do cliente..."
+            />
+          </div>
+
           <div>
             <label className="field-label">
               Assunto / Do que se trata <span className="text-red-500">*</span>
@@ -70,35 +91,24 @@ export default function NovoProcessoPage() {
               onChange={(e) => setSubject(e.target.value)}
               required
               className="input"
-              placeholder="Descreva o assunto do processo..."
+              placeholder="Descreva o assunto da demanda..."
             />
           </div>
 
           <div>
             <label className="field-label">
-              Categoria <span className="text-stone-400 font-normal">(opcional)</span>
+              Responsável <span className="text-stone-400 font-normal">(opcional)</span>
             </label>
             <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              value={responsible}
+              onChange={(e) => setResponsible(e.target.value)}
               className="input"
             >
-              <option value="">Selecione uma categoria...</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              <option value="">Selecione o responsável...</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.name}>{u.name}</option>
               ))}
-              <option value="Outro">Outro (especificar)</option>
             </select>
-            {category === "Outro" && (
-              <input
-                type="text"
-                value={otherCategory}
-                onChange={(e) => setOtherCategory(e.target.value)}
-                className="input mt-2"
-                placeholder="Qual a categoria?"
-                autoFocus
-              />
-            )}
           </div>
 
           <div>
@@ -110,7 +120,7 @@ export default function NovoProcessoPage() {
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
               className="input resize-none"
-              placeholder="Informações adicionais sobre o processo (opcional)..."
+              placeholder="Informações adicionais sobre a demanda (opcional)..."
             />
           </div>
 
@@ -135,7 +145,7 @@ export default function NovoProcessoPage() {
 
           <div className="flex gap-3 pt-2">
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? "Cadastrando..." : "Cadastrar Processo"}
+              {loading ? "Cadastrando..." : "Cadastrar Demanda"}
             </button>
             <Link href="/dashboard/processos" className="btn-ghost">
               Cancelar
