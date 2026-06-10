@@ -26,9 +26,17 @@ export default function TaskActions({ taskId, status, isAdmin, canManage, canCla
     const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     const invalid = arr.find((f) => {
       const name = f.name.toLowerCase();
-      return f.type !== "application/pdf" && f.type !== DOCX_MIME && !name.endsWith(".pdf") && !name.endsWith(".docx");
+      return (
+        f.type !== "application/pdf" &&
+        f.type !== DOCX_MIME &&
+        f.type !== "image/jpeg" &&
+        !name.endsWith(".pdf") &&
+        !name.endsWith(".docx") &&
+        !name.endsWith(".jpg") &&
+        !name.endsWith(".jpeg")
+      );
     });
-    if (invalid) { setError(`O arquivo "${invalid.name}" não é um PDF nem um Word (.docx).`); return; }
+    if (invalid) { setError(`O arquivo "${invalid.name}" não é um PDF, Word ou JPEG.`); return; }
     setError("");
     setFiles((prev) => [...prev, ...arr]);
   }
@@ -70,7 +78,7 @@ export default function TaskActions({ taskId, status, isAdmin, canManage, canCla
   async function deleteTask() {
     if (!confirm("Excluir esta tarefa? Esta ação não pode ser desfeita.")) return;
     await fetch(`/api/tarefas/${taskId}`, { method: "DELETE" });
-    router.push("/dashboard/caixa-entrada");
+    router.push("/dashboard/consultivo");
     router.refresh();
   }
 
@@ -134,13 +142,13 @@ export default function TaskActions({ taskId, status, isAdmin, canManage, canCla
             <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} className="input resize-none" placeholder="Descreva o andamento da tarefa..." />
           </div>
           <div>
-            <label className="field-label">Anexar documentos (PDF ou Word)</label>
+            <label className="field-label">Anexar documentos (PDF, Word ou JPEG)</label>
             <label className="flex items-center justify-center gap-2 border-2 border-dashed border-stone-300 rounded-lg px-4 py-3 text-sm text-stone-500 cursor-pointer hover:border-gold-400 hover:text-gold-700 transition">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
               </svg>
-              Clique para selecionar arquivos (PDF ou Word)
-              <input type="file" accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx" multiple className="hidden" onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
+              Clique para selecionar arquivos
+              <input type="file" accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg" multiple className="hidden" onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
             </label>
             {files.length > 0 && (
               <ul className="mt-2 space-y-1">

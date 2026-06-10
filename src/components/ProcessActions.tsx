@@ -146,14 +146,15 @@ export default function ProcessActions({ processId, isAdmin, canEdit, canEditMar
     });
     setLoading(false);
     if (!res.ok) { setError((await res.json()).error); return; }
-    router.push(newStatus === "ARQUIVADO" ? "/dashboard/arquivados" : "/dashboard/processos");
+    const listHref = isJudicial ? "/dashboard/processos-judiciais" : "/dashboard/processos";
+    router.push(newStatus === "ARQUIVADO" ? "/dashboard/arquivados" : listHref);
     router.refresh();
   }
 
   async function deleteProcess() {
     if (!confirm("Excluir este processo? Esta ação não pode ser desfeita.")) return;
     await fetch(`/api/processos/${processId}`, { method: "DELETE" });
-    router.push("/dashboard/processos");
+    router.push(isJudicial ? "/dashboard/processos-judiciais" : "/dashboard/processos");
     router.refresh();
   }
 
