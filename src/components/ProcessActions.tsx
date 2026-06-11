@@ -176,8 +176,8 @@ export default function ProcessActions({ processId, isAdmin, canEdit, canEditMar
             onClick={() => { setShowMarker(!showMarker); setShowEdit(false); setShowMovement(false); }}
             className="flex items-center gap-1.5 border border-stone-300 bg-white hover:bg-stone-50 text-navy-700 px-4 py-2 rounded-lg text-sm font-medium transition"
           >
-            {client === "ESCRITORIO" && <span className="w-2.5 h-2.5 rounded-full bg-navy-700 flex-shrink-0"></span>}
-            {client === "PREFEITURA" && <span className="w-2.5 h-2.5 rounded-full bg-sky-400 flex-shrink-0"></span>}
+            {client === "CIVEL" && <span className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0"></span>}
+            {client === "TRABALHISTA" && <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0"></span>}
             {!client && (
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -421,15 +421,15 @@ export default function ProcessActions({ processId, isAdmin, canEdit, canEditMar
         <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-4 space-y-3">
           <h3 className="text-sm font-semibold text-navy-800">Marcador do processo</h3>
           <div className="flex gap-3 flex-wrap">
-            <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${client === "ESCRITORIO" ? "border-navy-700 bg-navy-50" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
-              <input type="radio" name="marker-client" value="ESCRITORIO" checked={client === "ESCRITORIO"} onChange={(e) => setClient(e.target.value)} className="sr-only" />
-              <span className="w-3 h-3 rounded-full bg-navy-700 flex-shrink-0"></span>
-              <span className="text-sm font-medium text-navy-800">Escritório</span>
+            <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${client === "CIVEL" ? "border-blue-500 bg-blue-50" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
+              <input type="radio" name="marker-client" value="CIVEL" checked={client === "CIVEL"} onChange={(e) => setClient(e.target.value)} className="sr-only" />
+              <span className="w-3 h-3 rounded-full bg-blue-500 flex-shrink-0"></span>
+              <span className="text-sm font-medium text-blue-700">Cível</span>
             </label>
-            <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${client === "PREFEITURA" ? "border-sky-400 bg-sky-50" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
-              <input type="radio" name="marker-client" value="PREFEITURA" checked={client === "PREFEITURA"} onChange={(e) => setClient(e.target.value)} className="sr-only" />
-              <span className="w-3 h-3 rounded-full bg-sky-400 flex-shrink-0"></span>
-              <span className="text-sm font-medium text-sky-700">Prefeitura</span>
+            <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${client === "TRABALHISTA" ? "border-red-500 bg-red-50" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
+              <input type="radio" name="marker-client" value="TRABALHISTA" checked={client === "TRABALHISTA"} onChange={(e) => setClient(e.target.value)} className="sr-only" />
+              <span className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0"></span>
+              <span className="text-sm font-medium text-red-700">Trabalhista</span>
             </label>
             {client && (
               <button type="button" onClick={() => setClient("")} className="text-xs text-stone-400 hover:text-stone-600 transition px-2">

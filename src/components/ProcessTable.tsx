@@ -48,8 +48,8 @@ const COLUMN_LABELS: Record<ProcessColumnKey, string> = {
 const DATE_KEYS: ProcessColumnKey[] = ["lastMovementAt", "deadline", "archivedAt"];
 
 function clientLabel(client?: string | null): string {
-  if (client === "ESCRITORIO") return "Cível";
-  if (client === "PREFEITURA") return "Pessoal";
+  if (client === "CIVEL") return "Cível";
+  if (client === "TRABALHISTA") return "Trabalhista";
   return "";
 }
 
@@ -190,15 +190,15 @@ export default function ProcessTable({
                     case "marcador":
                       return (
                         <td key={col} className="px-6 py-3">
-                          {p.client === "ESCRITORIO" ? (
-                            <span className="inline-flex items-center gap-1.5 text-xs text-navy-700">
-                              <span className="w-2.5 h-2.5 rounded-full bg-navy-700 flex-shrink-0"></span>
+                          {p.client === "CIVEL" ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-blue-700">
+                              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0"></span>
                               Cível
                             </span>
-                          ) : p.client === "PREFEITURA" ? (
-                            <span className="inline-flex items-center gap-1.5 text-xs text-sky-700">
-                              <span className="w-2.5 h-2.5 rounded-full bg-sky-400 flex-shrink-0"></span>
-                              Pessoal
+                          ) : p.client === "TRABALHISTA" ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-red-700">
+                              <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0"></span>
+                              Trabalhista
                             </span>
                           ) : (
                             <span className="text-stone-400 text-xs">—</span>

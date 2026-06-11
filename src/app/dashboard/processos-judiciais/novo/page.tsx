@@ -117,15 +117,15 @@ function NovoProcessoJudicialForm() {
           <div>
             <label className="field-label">Marcador</label>
             <div className="flex gap-3">
-              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${client === "ESCRITORIO" ? "border-navy-700 bg-navy-50" : "border-stone-200 hover:border-stone-300"}`}>
-                <input type="radio" name="client" value="ESCRITORIO" checked={client === "ESCRITORIO"} onChange={(e) => setClient(e.target.value)} className="sr-only" />
-                <span className="w-3 h-3 rounded-full bg-navy-700 flex-shrink-0"></span>
-                <span className="text-sm font-medium text-navy-800">Escritório</span>
+              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${client === "CIVEL" ? "border-blue-500 bg-blue-50" : "border-stone-200 hover:border-stone-300"}`}>
+                <input type="radio" name="client" value="CIVEL" checked={client === "CIVEL"} onChange={(e) => setClient(e.target.value)} className="sr-only" />
+                <span className="w-3 h-3 rounded-full bg-blue-500 flex-shrink-0"></span>
+                <span className="text-sm font-medium text-blue-700">Cível</span>
               </label>
-              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${client === "PREFEITURA" ? "border-sky-400 bg-sky-50" : "border-stone-200 hover:border-stone-300"}`}>
-                <input type="radio" name="client" value="PREFEITURA" checked={client === "PREFEITURA"} onChange={(e) => setClient(e.target.value)} className="sr-only" />
-                <span className="w-3 h-3 rounded-full bg-sky-400 flex-shrink-0"></span>
-                <span className="text-sm font-medium text-sky-700">Prefeitura</span>
+              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${client === "TRABALHISTA" ? "border-red-500 bg-red-50" : "border-stone-200 hover:border-stone-300"}`}>
+                <input type="radio" name="client" value="TRABALHISTA" checked={client === "TRABALHISTA"} onChange={(e) => setClient(e.target.value)} className="sr-only" />
+                <span className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0"></span>
+                <span className="text-sm font-medium text-red-700">Trabalhista</span>
               </label>
               {client && (
                 <button type="button" onClick={() => setClient("")} className="text-xs text-stone-400 hover:text-stone-600 transition">

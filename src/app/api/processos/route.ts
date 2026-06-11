@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     if (!number) {
       return NextResponse.json({ error: "Informe o numero do processo judicial." }, { status: 400 });
     }
-    const VALID_CLIENTS = ["ESCRITORIO", "PREFEITURA"];
+    const VALID_CLIENTS = ["CIVEL", "TRABALHISTA"];
     const client = VALID_CLIENTS.includes(body.client) ? body.client : null;
     try {
       const process = await prisma.process.create({

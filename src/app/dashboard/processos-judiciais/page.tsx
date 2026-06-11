@@ -32,11 +32,11 @@ export default async function ProcessosJudiciaisPage({
     partesFiltro.push("Com Tarefa Vinculada");
   }
   if (searchParams?.marcador === "civel") {
-    where.client = "ESCRITORIO";
+    where.client = "CIVEL";
     partesFiltro.push("Cível");
-  } else if (searchParams?.marcador === "pessoal") {
-    where.client = "PREFEITURA";
-    partesFiltro.push("Pessoal");
+  } else if (searchParams?.marcador === "trabalhista") {
+    where.client = "TRABALHISTA";
+    partesFiltro.push("Trabalhista");
   }
 
   const filtroAtivo = partesFiltro.join(" · ");
@@ -125,23 +125,23 @@ export default async function ProcessosJudiciaisPage({
           href="/dashboard/processos-judiciais?marcador=civel"
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
             searchParams?.marcador === "civel"
-              ? "bg-navy-50 text-navy-700 border-navy-200"
-              : "text-stone-500 border-transparent hover:text-navy-700 hover:bg-stone-50 hover:border-stone-200"
+              ? "bg-blue-50 text-blue-700 border-blue-200"
+              : "text-stone-500 border-transparent hover:text-blue-700 hover:bg-stone-50 hover:border-stone-200"
           }`}
         >
-          <span className="w-2 h-2 rounded-full bg-navy-700 flex-shrink-0"></span>
+          <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
           Cível
         </Link>
         <Link
-          href="/dashboard/processos-judiciais?marcador=pessoal"
+          href="/dashboard/processos-judiciais?marcador=trabalhista"
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-            searchParams?.marcador === "pessoal"
-              ? "bg-sky-50 text-sky-700 border-sky-200"
-              : "text-stone-500 border-transparent hover:text-sky-700 hover:bg-stone-50 hover:border-stone-200"
+            searchParams?.marcador === "trabalhista"
+              ? "bg-red-50 text-red-700 border-red-200"
+              : "text-stone-500 border-transparent hover:text-red-700 hover:bg-stone-50 hover:border-stone-200"
           }`}
         >
-          <span className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0"></span>
-          Pessoal
+          <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
+          Trabalhista
         </Link>
       </div>
 

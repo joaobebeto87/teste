@@ -53,8 +53,8 @@ export default async function PublicacoesPage() {
   }
 
   function marcadorLabel(client: string | null): { label: string; cls: string } {
-    if (client === "ESCRITORIO") return { label: "Cível", cls: "bg-navy-100 text-navy-700" };
-    if (client === "PREFEITURA") return { label: "Pessoal", cls: "bg-sky-100 text-sky-700" };
+    if (client === "CIVEL") return { label: "Cível", cls: "bg-blue-100 text-blue-700" };
+    if (client === "TRABALHISTA") return { label: "Trabalhista", cls: "bg-red-100 text-red-700" };
     return { label: "Sem marcador", cls: "bg-stone-100 text-stone-500" };
   }
 
